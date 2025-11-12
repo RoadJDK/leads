@@ -21,7 +21,7 @@ const Index = () => {
   };
 
   const greeting = savedName ? `${getGreeting()}, ${savedName}` : "Willkommen";
-  const { displayedText } = useTypewriter(greeting, 50);
+  const { displayedText, isComplete } = useTypewriter(greeting, 80);
 
   useEffect(() => {
     const storedName = localStorage.getItem("userName");
@@ -73,8 +73,11 @@ const Index = () => {
         <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background to-accent/5">
           <div className="text-center space-y-8 px-4 max-w-md w-full">
             <div className="space-y-4">
-              <h1 className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent min-h-[72px] md:min-h-[96px]">
-                {displayedText}
+              <h1 className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent min-h-[72px] md:min-h-[96px] flex items-center justify-center">
+                <span className="inline-block">
+                  {displayedText}
+                  {!isComplete && <span className="animate-pulse">|</span>}
+                </span>
               </h1>
               <p className="text-xl text-muted-foreground">
                 Wie ist Ihr Name?
@@ -117,8 +120,11 @@ const Index = () => {
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background to-accent/5">
         <div className="text-center space-y-8 px-4">
           <div className="space-y-4">
-            <h1 className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent min-h-[72px] md:min-h-[96px]">
-              {displayedText}
+            <h1 className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent min-h-[72px] md:min-h-[96px] flex items-center justify-center">
+              <span className="inline-block">
+                {displayedText}
+                {!isComplete && <span className="animate-pulse">|</span>}
+              </span>
             </h1>
             <p className="text-xl text-muted-foreground max-w-md mx-auto">
               Deine hammer Leads warten auf dich 🔥
