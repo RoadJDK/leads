@@ -102,7 +102,7 @@ const Index = () => {
             Willkommen, {savedName}
           </h1>
           <p className="text-xl text-muted-foreground max-w-md mx-auto">
-            Erhalten Sie Zugang zu Ihren wertvollen Daten
+            Ihre qualifizierten Leads warten auf Sie
           </p>
         </div>
         
@@ -112,7 +112,7 @@ const Index = () => {
           size="lg"
           className="text-lg px-12 py-6 h-auto rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105"
         >
-          {isLoading ? "Lädt..." : "Daten erlangen"}
+          {isLoading ? "Lädt..." : "Leads erhalten"}
         </Button>
         
         <footer className="pt-12">
