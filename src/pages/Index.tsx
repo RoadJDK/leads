@@ -7,7 +7,7 @@ const Index = () => {
   const [name, setName] = useState("");
   const [savedName, setSavedName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const WEBHOOK_URL = "https://maibach-studios.app.n8n.cloud/webhook-test/bf35b604-1ced-408d-aa58-55d7083c1420";
+  const WEBHOOK_URL = "https://maibach-studios.app.n8n.cloud/webhook/bf35b604-1ced-408d-aa58-55d7083c1420";
 
   useEffect(() => {
     const storedName = localStorage.getItem("userName");
