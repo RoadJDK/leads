@@ -87,7 +87,7 @@ const Index = () => {
           
           <footer className="pt-12">
             <p className="text-sm text-muted-foreground flex items-center justify-center gap-1">
-              LeadWerkAI <Dot className="w-4 h-4" /> Made by Maibach Studios 2025
+              WachstumsWerk <Dot className="w-4 h-4" /> Made by Maibach Studios 2025
             </p>
           </footer>
         </div>
@@ -118,7 +118,7 @@ const Index = () => {
         
         <footer className="pt-12">
           <p className="text-sm text-muted-foreground flex items-center justify-center gap-1">
-            LeadWerkAI <Dot className="w-4 h-4" /> Made by Maibach Studios 2025
+            WachstumsWerk <Dot className="w-4 h-4" /> Made by Maibach Studios 2025
           </p>
         </footer>
       </div>
