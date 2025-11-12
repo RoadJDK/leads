@@ -7,7 +7,7 @@ const Index = () => {
   const [name, setName] = useState("");
   const [savedName, setSavedName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const WEBHOOK_URL = ""; // URL will be provided by user
+  const WEBHOOK_URL = "https://maibach-studios.app.n8n.cloud/webhook-test/bf35b604-1ced-408d-aa58-55d7083c1420";
 
   useEffect(() => {
     const storedName = localStorage.getItem("userName");
@@ -35,7 +35,7 @@ const Index = () => {
           },
           body: JSON.stringify({
             timestamp: new Date().toISOString(),
-            action: 'daten_erlangen',
+            action: 'leads_erhalten',
             name: savedName,
           }),
         });
@@ -102,7 +102,7 @@ const Index = () => {
             Willkommen, {savedName}
           </h1>
           <p className="text-xl text-muted-foreground max-w-md mx-auto">
-            Ihre qualifizierten Leads warten auf Sie
+            Deine hammer Leads warten auf dich 🔥
           </p>
         </div>
         
