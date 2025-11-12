@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { Dot } from "lucide-react";
 
 const Index = () => {
   const [name, setName] = useState("");
@@ -85,8 +86,8 @@ const Index = () => {
           </div>
           
           <footer className="pt-12">
-            <p className="text-sm text-muted-foreground">
-              Made by Maibach Studios 2025
+            <p className="text-sm text-muted-foreground flex items-center justify-center gap-1">
+              LeadWerkAI <Dot className="w-4 h-4" /> Made by Maibach Studios 2025
             </p>
           </footer>
         </div>
@@ -116,8 +117,8 @@ const Index = () => {
         </Button>
         
         <footer className="pt-12">
-          <p className="text-sm text-muted-foreground">
-            Made by Maibach Studios 2025
+          <p className="text-sm text-muted-foreground flex items-center justify-center gap-1">
+            LeadWerkAI <Dot className="w-4 h-4" /> Made by Maibach Studios 2025
           </p>
         </footer>
       </div>
