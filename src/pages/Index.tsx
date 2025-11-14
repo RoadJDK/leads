@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { Dot } from "lucide-react";
+import { Dot, Settings } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useTypewriter } from "@/hooks/useTypewriter";
 
@@ -50,6 +50,12 @@ const Index = () => {
     }
   };
 
+  const handleResetApiKey = () => {
+    localStorage.removeItem("apiKey");
+    setSavedApiKey(null);
+    setApiKey("");
+  };
+
   const handleClick = async () => {
     setIsLoading(true);
     
@@ -70,6 +76,10 @@ const Index = () => {
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
+          if (response.status === 403) {
+            handleResetApiKey();
+            throw new Error("API-Schlüssel ist ungültig. Bitte geben Sie einen neuen ein.");
+          }
           throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
         }
       }
@@ -181,7 +191,17 @@ const Index = () => {
 
   return (
     <>
-      <ThemeToggle />
+      <div className="fixed top-4 right-4 z-50 flex gap-2">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={handleResetApiKey}
+          title="API-Schlüssel ändern"
+        >
+          <Settings className="h-5 w-5" />
+        </Button>
+        <ThemeToggle />
+      </div>
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background to-accent/5">
         <div className="text-center space-y-8 px-4">
           <div className="space-y-4">
