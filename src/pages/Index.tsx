@@ -13,7 +13,10 @@ const Index = () => {
   const [savedApiKey, setSavedApiKey] = useState<string | null>(null);
   const [previousApiKey, setPreviousApiKey] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [timerStartTime, setTimerStartTime] = useState<number | null>(null);
+  const [elapsedTime, setElapsedTime] = useState(0);
   const WEBHOOK_URL = "https://kroenersim.app.n8n.cloud/webhook/kroener-consulting";
+  const COOLDOWN_DURATION = 20 * 60 * 1000; // 20 minutes in milliseconds
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -39,7 +42,42 @@ const Index = () => {
     if (storedApiKey) {
       setSavedApiKey(storedApiKey);
     }
+    
+    // Check for existing timer
+    const storedTimerStart = localStorage.getItem("timerStartTime");
+    if (storedTimerStart) {
+      const startTime = parseInt(storedTimerStart);
+      const elapsed = Date.now() - startTime;
+      
+      if (elapsed < COOLDOWN_DURATION) {
+        setTimerStartTime(startTime);
+      } else {
+        localStorage.removeItem("timerStartTime");
+      }
+    }
   }, []);
+
+  // Timer effect
+  useEffect(() => {
+    if (!timerStartTime) {
+      setElapsedTime(0);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - timerStartTime;
+      
+      if (elapsed >= COOLDOWN_DURATION) {
+        setTimerStartTime(null);
+        setElapsedTime(0);
+        localStorage.removeItem("timerStartTime");
+      } else {
+        setElapsedTime(elapsed);
+      }
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [timerStartTime]);
 
   const handleSaveName = () => {
     if (name.trim()) {
@@ -64,6 +102,9 @@ const Index = () => {
 
   const handleClick = async () => {
     setIsLoading(true);
+    const startTime = Date.now();
+    setTimerStartTime(startTime);
+    localStorage.setItem("timerStartTime", startTime.toString());
     
     try {
       if (WEBHOOK_URL && savedApiKey) {
@@ -101,6 +142,15 @@ const Index = () => {
       setIsLoading(false);
     }
   };
+
+  const formatTime = (ms: number) => {
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const isOnCooldown = timerStartTime !== null && elapsedTime < COOLDOWN_DURATION;
 
   if (!savedName) {
     return (
@@ -224,11 +274,20 @@ const Index = () => {
           
           <Button 
             onClick={handleClick}
-            disabled={isLoading}
+            disabled={isLoading || isOnCooldown}
             size="lg"
             className="text-lg px-12 py-6 h-auto rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105"
           >
-            {isLoading ? "Lädt..." : "Leads erhalten"}
+            {isLoading ? (
+              <>
+                <Dot className="mr-2 h-5 w-5 animate-pulse" />
+                Lädt...
+              </>
+            ) : isOnCooldown ? (
+              `Bitte warten: ${formatTime(elapsedTime)}`
+            ) : (
+              "Leads erhalten"
+            )}
           </Button>
           
           <footer className="pt-12">
