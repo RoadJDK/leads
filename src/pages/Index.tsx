@@ -13,7 +13,7 @@ const Index = () => {
   const [savedApiKey, setSavedApiKey] = useState<string | null>(null);
   const [previousApiKey, setPreviousApiKey] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const WEBHOOK_URL = "https://maibach-studios.app.n8n.cloud/webhook/kroener-consulting";
+  const WEBHOOK_URL = "https://kroenersim.app.n8n.cloud/webhook-test/kroener-consulting";
 
   const getGreeting = () => {
     const hour = new Date().getHours();
