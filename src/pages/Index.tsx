@@ -168,7 +168,7 @@ const Index = () => {
             <div className="space-y-4">
               <Input
                 type="text"
-                placeholder={previousApiKey ? `Aktuell: ${previousApiKey.slice(0, 4)}...${previousApiKey.slice(-4)}` : "API-Schlüssel"}
+                placeholder={previousApiKey ? `${previousApiKey.slice(0, 4)}...${previousApiKey.slice(-4)}` : "API-Schlüssel"}
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleSaveApiKey()}
