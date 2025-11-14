@@ -9,6 +9,8 @@ import { useTypewriter } from "@/hooks/useTypewriter";
 const Index = () => {
   const [name, setName] = useState("");
   const [savedName, setSavedName] = useState<string | null>(null);
+  const [apiKey, setApiKey] = useState("");
+  const [savedApiKey, setSavedApiKey] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const WEBHOOK_URL = "https://maibach-studios.app.n8n.cloud/webhook/kroener-consulting";
 
@@ -28,6 +30,10 @@ const Index = () => {
     if (storedName) {
       setSavedName(storedName);
     }
+    const storedApiKey = localStorage.getItem("apiKey");
+    if (storedApiKey) {
+      setSavedApiKey(storedApiKey);
+    }
   }, []);
 
   const handleSaveName = () => {
@@ -37,15 +43,23 @@ const Index = () => {
     }
   };
 
+  const handleSaveApiKey = () => {
+    if (apiKey.trim()) {
+      localStorage.setItem("apiKey", apiKey.trim());
+      setSavedApiKey(apiKey.trim());
+    }
+  };
+
   const handleClick = async () => {
     setIsLoading(true);
     
     try {
-      if (WEBHOOK_URL) {
-        await fetch(WEBHOOK_URL, {
+      if (WEBHOOK_URL && savedApiKey) {
+        const response = await fetch(WEBHOOK_URL, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'x-api-key': savedApiKey,
           },
           body: JSON.stringify({
             timestamp: new Date().toISOString(),
@@ -53,6 +67,11 @@ const Index = () => {
             name: savedName,
           }),
         });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+        }
       }
       
       toast.success("Erfolgreich!", {
@@ -60,7 +79,8 @@ const Index = () => {
         duration: 5000,
       });
     } catch (error) {
-      toast.error("Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut.");
+      const errorMessage = error instanceof Error ? error.message : "Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut.";
+      toast.error(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -100,6 +120,51 @@ const Index = () => {
                 className="w-full text-lg px-12 py-6 h-auto rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105"
               >
                 Weiter
+              </Button>
+            </div>
+            
+            <footer className="pt-12">
+              <p className="text-sm text-muted-foreground flex items-center justify-center gap-1">
+                WachstumsWerk <Dot className="w-4 h-4" /> Made by Maibach Studios 2025
+              </p>
+            </footer>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  if (!savedApiKey) {
+    return (
+      <>
+        <ThemeToggle />
+        <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background to-accent/5">
+          <div className="text-center space-y-8 px-4 max-w-md w-full">
+            <div className="space-y-4">
+              <h1 className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent min-h-[72px] md:min-h-[96px] flex items-center justify-center">
+                API-Schlüssel
+              </h1>
+              <p className="text-xl text-muted-foreground">
+                Bitte geben Sie Ihren API-Schlüssel ein
+              </p>
+            </div>
+            
+            <div className="space-y-4">
+              <Input
+                type="password"
+                placeholder="API-Schlüssel"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleSaveApiKey()}
+                className="text-lg py-6 px-4 rounded-xl"
+              />
+              <Button 
+                onClick={handleSaveApiKey}
+                disabled={!apiKey.trim()}
+                size="lg"
+                className="w-full text-lg px-12 py-6 h-auto rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105"
+              >
+                Speichern
               </Button>
             </div>
             
