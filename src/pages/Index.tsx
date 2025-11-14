@@ -11,6 +11,7 @@ const Index = () => {
   const [savedName, setSavedName] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [savedApiKey, setSavedApiKey] = useState<string | null>(null);
+  const [previousApiKey, setPreviousApiKey] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const WEBHOOK_URL = "https://maibach-studios.app.n8n.cloud/webhook/kroener-consulting";
 
@@ -55,6 +56,7 @@ const Index = () => {
   };
 
   const handleResetApiKey = () => {
+    setPreviousApiKey(savedApiKey);
     localStorage.removeItem("apiKey");
     setSavedApiKey(null);
     setApiKey("");
@@ -166,7 +168,7 @@ const Index = () => {
             <div className="space-y-4">
               <Input
                 type="password"
-                placeholder="API-Schlüssel"
+                placeholder={previousApiKey || "API-Schlüssel"}
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleSaveApiKey()}
