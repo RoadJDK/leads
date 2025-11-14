@@ -16,9 +16,13 @@ const Index = () => {
 
   const getGreeting = () => {
     const hour = new Date().getHours();
-    if (hour >= 5 && hour < 12) return "Guten Morgen";
-    if (hour >= 12 && hour < 18) return "Guten Mittag";
-    if (hour >= 18 && hour < 22) return "Guten Abend";
+    if (hour >= 5 && hour < 10) return "Guten Morgen";
+    if (hour >= 10 && hour < 12) return "Einen schönen Vormittag";
+    if (hour >= 12 && hour < 14) return "Mahlzeit";
+    if (hour >= 14 && hour < 17) return "Guten Nachmittag";
+    if (hour >= 17 && hour < 19) return "Schönen Feierabend";
+    if (hour >= 19 && hour < 22) return "Guten Abend";
+    if (hour >= 22 || hour < 1) return "Einen schönen Abend";
     return "Gute Nacht";
   };
 
