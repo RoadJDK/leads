@@ -73,10 +73,13 @@ const Index = () => {
     }
   };
 
+  const [previousWebhookUrl, setPreviousWebhookUrl] = useState<string | null>(null);
+
   const handleResetWebhookUrl = () => {
-    setWebhookUrl(savedWebhookUrl || "");
+    setPreviousWebhookUrl(savedWebhookUrl);
     localStorage.removeItem("webhookUrl");
     setSavedWebhookUrl(null);
+    setWebhookUrl("");
   };
 
   const handleResetApiKey = () => {
@@ -194,7 +197,7 @@ const Index = () => {
             <div className="space-y-4">
               <Input
                 type="url"
-                placeholder="https://..."
+                placeholder={previousWebhookUrl || "https://..."}
                 value={webhookUrl}
                 onChange={(e) => setWebhookUrl(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleSaveWebhookUrl()}
