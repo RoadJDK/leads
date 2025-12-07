@@ -5,15 +5,22 @@ import { toast } from "sonner";
 import { Dot, Settings } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useTypewriter } from "@/hooks/useTypewriter";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const Index = () => {
   const [name, setName] = useState("");
   const [savedName, setSavedName] = useState<string | null>(null);
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [savedWebhookUrl, setSavedWebhookUrl] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [savedApiKey, setSavedApiKey] = useState<string | null>(null);
   const [previousApiKey, setPreviousApiKey] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const WEBHOOK_URL = "https://kroenersim.app.n8n.cloud/webhook/kroener-consulting";
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -35,6 +42,10 @@ const Index = () => {
     if (storedName) {
       setSavedName(storedName);
     }
+    const storedWebhookUrl = localStorage.getItem("webhookUrl");
+    if (storedWebhookUrl) {
+      setSavedWebhookUrl(storedWebhookUrl);
+    }
     const storedApiKey = localStorage.getItem("apiKey");
     if (storedApiKey) {
       setSavedApiKey(storedApiKey);
@@ -48,11 +59,24 @@ const Index = () => {
     }
   };
 
+  const handleSaveWebhookUrl = () => {
+    if (webhookUrl.trim()) {
+      localStorage.setItem("webhookUrl", webhookUrl.trim());
+      setSavedWebhookUrl(webhookUrl.trim());
+    }
+  };
+
   const handleSaveApiKey = () => {
     if (apiKey.trim()) {
       localStorage.setItem("apiKey", apiKey.trim());
       setSavedApiKey(apiKey.trim());
     }
+  };
+
+  const handleResetWebhookUrl = () => {
+    setWebhookUrl(savedWebhookUrl || "");
+    localStorage.removeItem("webhookUrl");
+    setSavedWebhookUrl(null);
   };
 
   const handleResetApiKey = () => {
@@ -66,8 +90,8 @@ const Index = () => {
     setIsLoading(true);
     
     try {
-      if (WEBHOOK_URL && savedApiKey) {
-        const response = await fetch(WEBHOOK_URL, {
+      if (savedWebhookUrl && savedApiKey) {
+        const response = await fetch(savedWebhookUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -102,6 +126,7 @@ const Index = () => {
     }
   };
 
+  // Step 1: Name input
   if (!savedName) {
     return (
       <>
@@ -150,6 +175,53 @@ const Index = () => {
     );
   }
 
+  // Step 2: Webhook URL input
+  if (!savedWebhookUrl) {
+    return (
+      <>
+        <ThemeToggle />
+        <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background to-accent/5">
+          <div className="text-center space-y-8 px-4 max-w-md w-full">
+            <div className="space-y-4">
+              <h1 className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent min-h-[72px] md:min-h-[96px] flex items-center justify-center">
+                Webhook URL
+              </h1>
+              <p className="text-xl text-muted-foreground">
+                Bitte geben Sie Ihre Webhook URL ein
+              </p>
+            </div>
+            
+            <div className="space-y-4">
+              <Input
+                type="url"
+                placeholder="https://..."
+                value={webhookUrl}
+                onChange={(e) => setWebhookUrl(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleSaveWebhookUrl()}
+                className="text-lg py-6 px-4 rounded-xl"
+              />
+              <Button 
+                onClick={handleSaveWebhookUrl}
+                disabled={!webhookUrl.trim()}
+                size="lg"
+                className="w-full text-lg px-12 py-6 h-auto rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105"
+              >
+                Weiter
+              </Button>
+            </div>
+            
+            <footer className="pt-12">
+              <p className="text-sm text-muted-foreground flex items-center justify-center gap-1">
+                WachstumsWerk <Dot className="w-4 h-4" /> Made by Maibach Studios 2025
+              </p>
+            </footer>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  // Step 3: API Key input
   if (!savedApiKey) {
     return (
       <>
@@ -198,14 +270,25 @@ const Index = () => {
   return (
     <>
       <div className="fixed top-4 right-4 z-50 flex gap-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={handleResetApiKey}
-          title="API-Schlüssel ändern"
-        >
-          <Settings className="h-5 w-5" />
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              title="Einstellungen"
+            >
+              <Settings className="h-5 w-5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={handleResetWebhookUrl}>
+              Webhook ändern
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleResetApiKey}>
+              API-Schlüssel ändern
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <ThemeToggle />
       </div>
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background to-accent/5">
