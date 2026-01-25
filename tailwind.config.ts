@@ -57,6 +57,12 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        placeholder: {
+          auto: "hsl(var(--placeholder-auto))",
+          "auto-bg": "hsl(var(--placeholder-auto-bg))",
+          manual: "hsl(var(--placeholder-manual))",
+          "manual-bg": "hsl(var(--placeholder-manual-bg))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
