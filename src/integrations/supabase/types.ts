@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      email_templates: {
+        Row: {
+          body_template: string
+          created_at: string
+          id: string
+          manual_fields: Json
+          name: string
+          subject: string | null
+          updated_at: string
+        }
+        Insert: {
+          body_template: string
+          created_at?: string
+          id?: string
+          manual_fields?: Json
+          name: string
+          subject?: string | null
+          updated_at?: string
+        }
+        Update: {
+          body_template?: string
+          created_at?: string
+          id?: string
+          manual_fields?: Json
+          name?: string
+          subject?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       processing_status: {
         Row: {
           has_error: boolean
