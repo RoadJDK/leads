@@ -1,5 +1,6 @@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import { TagInput } from "./TagInput";
 
 export interface LeadFiltersData {
@@ -112,23 +113,41 @@ export const LeadFilters = ({ filters, onChange }: LeadFiltersProps) => {
       {/* Anzahl Leads */}
       <div className="space-y-2">
         <Label className="text-base font-medium">Anzahl Leads</Label>
-        <Input
-          type="text"
-          value={filters.anzahlLeads}
-          onChange={(e) => {
-            const val = e.target.value.toLowerCase();
-            if (val === "max" || val === "") {
-              updateFilter("anzahlLeads", val === "" ? "" : "max");
-            } else {
-              const num = parseInt(val);
-              if (!isNaN(num) && num >= 0) {
-                updateFilter("anzahlLeads", num);
+        <div className="flex items-center gap-3">
+          <Input
+            type="number"
+            min={1}
+            value={filters.anzahlLeads === "max" ? "" : filters.anzahlLeads}
+            onChange={(e) => {
+              const val = e.target.value;
+              if (val === "") {
+                updateFilter("anzahlLeads", "");
+              } else {
+                const num = parseInt(val);
+                if (!isNaN(num) && num >= 0) {
+                  updateFilter("anzahlLeads", num);
+                }
               }
-            }
-          }}
-          placeholder='Zahl oder "max"'
-          className="text-base py-5 px-4 rounded-xl"
-        />
+            }}
+            placeholder="Anzahl eingeben"
+            disabled={filters.anzahlLeads === "max"}
+            className="text-base py-5 px-4 rounded-xl flex-1"
+          />
+          <Button
+            type="button"
+            variant={filters.anzahlLeads === "max" ? "default" : "outline"}
+            onClick={() => {
+              if (filters.anzahlLeads === "max") {
+                updateFilter("anzahlLeads", "");
+              } else {
+                updateFilter("anzahlLeads", "max");
+              }
+            }}
+            className="h-[50px] px-6 rounded-xl font-medium"
+          >
+            Max
+          </Button>
+        </div>
       </div>
     </div>
   );
