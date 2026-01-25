@@ -170,28 +170,41 @@ export function EmailTemplateEditor() {
     }
   }, [open]);
 
-  // Extract manual placeholders from subject and body
-  const usedManualPlaceholders = useMemo(() => {
+  // Extract manual placeholders from subject and body text
+  const textPlaceholders = useMemo(() => {
     const allText = `${templateSubject} ${templateBody}`;
     const allPlaceholders = extractPlaceholders(allText);
     return allPlaceholders.filter(p => !isAutoPlaceholder(p));
   }, [templateSubject, templateBody]);
 
-  // Sync customPlaceholders with used manual placeholders
+  // Combine text placeholders with manually added ones
+  const usedManualPlaceholders = useMemo(() => {
+    const fromText = new Set(textPlaceholders);
+    const fromCustom = customPlaceholders.map(p => p.name);
+    return [...new Set([...fromText, ...fromCustom])];
+  }, [textPlaceholders, customPlaceholders]);
+
+  // Sync customPlaceholders values with used placeholders (but don't remove manually added ones)
   useEffect(() => {
     setCustomPlaceholders(prev => {
       const updated: CustomPlaceholder[] = [];
-      for (const name of usedManualPlaceholders) {
-        const existing = prev.find(p => p.name === name);
-        if (existing) {
-          updated.push(existing);
-        } else {
+      const existingNames = new Set(prev.map(p => p.name));
+      
+      // Keep all manually added placeholders
+      for (const placeholder of prev) {
+        updated.push(placeholder);
+      }
+      
+      // Add any new ones found in text that aren't already tracked
+      for (const name of textPlaceholders) {
+        if (!existingNames.has(name)) {
           updated.push({ name, value: "" });
         }
       }
+      
       return updated;
     });
-  }, [usedManualPlaceholders]);
+  }, [textPlaceholders]);
 
   const fetchTemplates = async () => {
     setIsLoading(true);
@@ -367,20 +380,57 @@ export function EmailTemplateEditor() {
     }
   }, [activeField, templateSubject, templateBody]);
 
-  // Handle drop on textarea/input
+  // Handle drop on textarea/input - insert at drop position
   const handleDrop = useCallback((e: React.DragEvent, field: "subject" | "body") => {
     e.preventDefault();
     const placeholder = e.dataTransfer.getData("text/plain");
     if (!placeholder) return;
 
-    if (field === "subject") {
-      setTemplateSubject(prev => prev + placeholder);
-      subjectRef.current?.focus();
-    } else {
-      setTemplateBody(prev => prev + placeholder);
-      bodyRef.current?.focus();
+    if (field === "subject" && subjectRef.current) {
+      const input = subjectRef.current;
+      // Get cursor position from drop event
+      const rect = input.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      
+      // Estimate character position (rough approximation)
+      const charWidth = 8; // approximate character width
+      const estimatedPos = Math.round(x / charWidth);
+      const pos = Math.min(Math.max(0, estimatedPos), templateSubject.length);
+      
+      const newSubject = templateSubject.substring(0, pos) + placeholder + templateSubject.substring(pos);
+      setTemplateSubject(newSubject);
+      setTimeout(() => {
+        input.focus();
+        input.setSelectionRange(pos + placeholder.length, pos + placeholder.length);
+      }, 0);
+    } else if (field === "body" && bodyRef.current) {
+      const textarea = bodyRef.current;
+      // Use document.caretPositionFromPoint or caretRangeFromPoint to get drop position
+      let dropPos = templateBody.length; // fallback to end
+      
+      // Try to get the position from the drop coordinates
+      if (document.caretRangeFromPoint) {
+        const range = document.caretRangeFromPoint(e.clientX, e.clientY);
+        if (range && textarea.contains(range.startContainer)) {
+          // For textarea, we need to calculate position differently
+          // Use the selection as approximation after focusing
+          textarea.focus();
+          dropPos = textarea.selectionStart || 0;
+        }
+      }
+      
+      // Alternative: set focus and use current selection
+      textarea.focus();
+      dropPos = textarea.selectionStart || dropPos;
+      
+      const newBody = templateBody.substring(0, dropPos) + placeholder + templateBody.substring(dropPos);
+      setTemplateBody(newBody);
+      setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(dropPos + placeholder.length, dropPos + placeholder.length);
+      }, 0);
     }
-  }, []);
+  }, [templateSubject, templateBody]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -405,9 +455,22 @@ export function EmailTemplateEditor() {
       });
       return;
     }
+    if (usedManualPlaceholders.includes(name)) {
+      toast({
+        title: "Info",
+        description: "Dieser Platzhalter existiert bereits",
+      });
+      setNewPlaceholderName("");
+      return;
+    }
     
-    insertPlaceholder(`{{${name}}}`);
+    // Add to custom placeholders list without inserting into text
+    setCustomPlaceholders(prev => [...prev, { name, value: "" }]);
     setNewPlaceholderName("");
+    toast({
+      title: "Platzhalter erstellt",
+      description: `{{${name}}} ist jetzt verfügbar. Klicken oder ziehen Sie ihn in den Text.`,
+    });
   };
 
   const updatePlaceholderValue = (name: string, value: string) => {
@@ -555,23 +618,21 @@ export function EmailTemplateEditor() {
                         maxLength={100}
                         className="h-9 md:h-10 flex-1 text-sm"
                       />
-                      {!showTemplateList && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="outline"
-                                size="icon"
-                                className="h-9 w-9 md:h-10 md:w-10 shrink-0"
-                                onClick={() => setShowTemplateList(true)}
-                              >
-                                <FolderOpen className="h-4 w-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Vorlagen anzeigen</TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant={showTemplateList ? "ghost" : "outline"}
+                              size="icon"
+                              className="h-9 w-9 md:h-10 md:w-10 shrink-0"
+                              onClick={() => setShowTemplateList(!showTemplateList)}
+                            >
+                              <FolderOpen className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>{showTemplateList ? "Vorlagen ausblenden" : "Vorlagen anzeigen"}</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </div>
                   </div>
 
