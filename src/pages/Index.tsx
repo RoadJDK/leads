@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Dot, Settings } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useTypewriter } from "@/hooks/useTypewriter";
+import { LeadFilters, LeadFiltersData, isFiltersValid } from "@/components/LeadFilters";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,6 +22,15 @@ const Index = () => {
   const [savedApiKey, setSavedApiKey] = useState<string | null>(null);
   const [previousApiKey, setPreviousApiKey] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [filters, setFilters] = useState<LeadFiltersData>({
+    firmenKeywords: [],
+    mitarbeiterVon: "",
+    mitarbeiterBis: "",
+    firmaOrtschaft: [],
+    personTitel: [],
+    maxUmsatz: "",
+    anzahlLeads: "",
+  });
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -104,6 +114,15 @@ const Index = () => {
             timestamp: new Date().toISOString(),
             action: 'leads_erhalten',
             name: savedName,
+            filters: {
+              firmenKeywords: filters.firmenKeywords,
+              mitarbeiterVon: filters.mitarbeiterVon,
+              mitarbeiterBis: filters.mitarbeiterBis === "" ? null : filters.mitarbeiterBis,
+              firmaOrtschaft: filters.firmaOrtschaft,
+              personTitel: filters.personTitel,
+              maxUmsatz: filters.maxUmsatz,
+              anzahlLeads: filters.anzahlLeads,
+            },
           }),
         });
 
@@ -294,8 +313,8 @@ const Index = () => {
         </DropdownMenu>
         <ThemeToggle />
       </div>
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background to-accent/5">
-        <div className="text-center space-y-8 px-4">
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background to-accent/5 py-12">
+        <div className="text-center space-y-8 px-4 w-full max-w-2xl">
           <div className="space-y-4">
             <h1 className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent min-h-[72px] md:min-h-[96px] flex items-center justify-center">
               <span className="inline-block">
@@ -307,10 +326,12 @@ const Index = () => {
               Deine hammer Leads warten auf dich 🔥
             </p>
           </div>
+
+          <LeadFilters filters={filters} onChange={setFilters} />
           
           <Button 
             onClick={handleClick}
-            disabled={isLoading}
+            disabled={isLoading || !isFiltersValid(filters)}
             size="lg"
             className="text-lg px-12 py-6 h-auto rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105"
           >
