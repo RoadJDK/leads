@@ -7,8 +7,17 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { useTypewriter } from "@/hooks/useTypewriter";
 import { LeadFilters, LeadFiltersData, isFiltersValid } from "@/components/LeadFilters";
 import { useProcessingStatus } from "@/hooks/useProcessingStatus";
+import { useEmailTemplates } from "@/hooks/useEmailTemplates";
+import { EmailTemplateEditor } from "@/components/EmailTemplateEditor";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,7 +41,10 @@ const Index = () => {
     const stored = localStorage.getItem("isTestMode");
     return stored === "true";
   });
+  const [sendEmails, setSendEmails] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const { isProcessing, hasError, isLoading: statusLoading, setProcessing, resetError } = useProcessingStatus();
+  const { templates, isLoading: templatesLoading } = useEmailTemplates();
   const [filters, setFilters] = useState<LeadFiltersData>({
     firmenKeywords: [],
     mitarbeiterVon: "",
@@ -46,6 +58,23 @@ const Index = () => {
   const handleTestModeToggle = (checked: boolean) => {
     setIsTestMode(checked);
     localStorage.setItem("isTestMode", String(checked));
+  };
+
+  const handleSendEmailsToggle = (checked: boolean) => {
+    // Only allow enabling if a template is selected
+    if (checked && !selectedTemplateId) {
+      toast.error("Bitte wählen Sie zuerst eine E-Mail Vorlage aus");
+      return;
+    }
+    setSendEmails(checked);
+  };
+
+  const handleTemplateSelect = (templateId: string) => {
+    setSelectedTemplateId(templateId);
+    // If no template selected (cleared), also disable send emails
+    if (!templateId) {
+      setSendEmails(false);
+    }
   };
 
   const activeWebhookUrl = isTestMode ? TEST_WEBHOOK_URL : PROD_WEBHOOK_URL;
@@ -142,6 +171,8 @@ const Index = () => {
             timestamp: new Date().toISOString(),
             action: 'leads_erhalten',
             name: savedName,
+            sendEmails: sendEmails,
+            emailTemplateId: sendEmails ? selectedTemplateId : null,
             filters: {
               firmenKeywords: filters.firmenKeywords,
               mitarbeiterVon: filters.mitarbeiterVon,
@@ -321,6 +352,7 @@ const Index = () => {
   return (
     <>
       <div className="fixed top-4 right-4 z-50 flex items-center gap-3">
+        <EmailTemplateEditor />
         <div className="flex items-center gap-2 bg-background/80 backdrop-blur-sm rounded-lg px-3 py-2 border">
           <Switch
             id="test-mode"
@@ -364,6 +396,47 @@ const Index = () => {
           </div>
 
           <LeadFilters filters={filters} onChange={setFilters} />
+
+          {/* Email Options */}
+          <div className="flex flex-col sm:flex-row gap-4 justify-center items-stretch sm:items-center">
+            <div className="flex items-center gap-2 bg-background/80 backdrop-blur-sm rounded-lg px-4 py-3 border">
+              <Switch
+                id="send-emails"
+                checked={sendEmails}
+                onCheckedChange={handleSendEmailsToggle}
+                disabled={!selectedTemplateId}
+              />
+              <Label 
+                htmlFor="send-emails" 
+                className={`text-sm font-medium cursor-pointer ${!selectedTemplateId ? 'text-muted-foreground' : ''}`}
+              >
+                E-Mails senden
+              </Label>
+            </div>
+            <div className="flex-1 min-w-[200px]">
+              <Select
+                value={selectedTemplateId || ""}
+                onValueChange={handleTemplateSelect}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="E-Mail Vorlage wählen..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {templatesLoading ? (
+                    <SelectItem value="loading" disabled>Lädt...</SelectItem>
+                  ) : templates.length === 0 ? (
+                    <SelectItem value="none" disabled>Keine Vorlagen vorhanden</SelectItem>
+                  ) : (
+                    templates.map((template) => (
+                      <SelectItem key={template.id} value={template.id}>
+                        {template.name}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
           
           <Button 
             onClick={handleClick}
@@ -386,7 +459,7 @@ const Index = () => {
             ) : isProcessing ? (
               <>
                 <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                Verarbeitung läuft...
+                Leads werden generiert...
               </>
             ) : (
               "Leads erhalten"
