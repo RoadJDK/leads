@@ -1,12 +1,13 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
+interface CustomPlaceholder {
+  name: string;
+  value: string;
+}
+
 interface ManualFields {
-  absender_vorname: string;
-  absender_name: string;
-  absender_telefon: string;
-  absender_email: string;
-  weitere_eigene: string;
+  custom_placeholders: CustomPlaceholder[];
 }
 
 export interface EmailTemplate {
@@ -31,10 +32,23 @@ export function useEmailTemplates() {
       .order("name", { ascending: true });
 
     if (!error && data) {
-      setTemplates(data.map(item => ({
-        ...item,
-        manual_fields: item.manual_fields as unknown as ManualFields
-      })));
+      setTemplates(data.map(item => {
+        // Handle legacy format migration
+        const rawFields = item.manual_fields as any;
+        let manualFields: ManualFields;
+        
+        if (rawFields && Array.isArray(rawFields.custom_placeholders)) {
+          manualFields = rawFields as ManualFields;
+        } else {
+          // Migrate from old format
+          manualFields = { custom_placeholders: [] };
+        }
+        
+        return {
+          ...item,
+          manual_fields: manualFields
+        };
+      }));
     }
     setIsLoading(false);
   };

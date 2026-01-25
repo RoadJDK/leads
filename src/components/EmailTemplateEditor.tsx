@@ -1,15 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Mail, Plus, Save, Trash2, Edit2, X, GripVertical } from "lucide-react";
+import { Mail, Plus, Save, Trash2, X, ChevronRight, Sparkles, Hand } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -29,12 +28,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
+interface CustomPlaceholder {
+  name: string;
+  value: string;
+}
+
 interface ManualFields {
-  absender_vorname: string;
-  absender_name: string;
-  absender_telefon: string;
-  absender_email: string;
-  weitere_eigene: string;
+  custom_placeholders: CustomPlaceholder[];
 }
 
 interface EmailTemplate {
@@ -48,20 +48,28 @@ interface EmailTemplate {
 }
 
 const AUTO_PLACEHOLDERS = [
-  { key: "{{person_vorname}}", label: "Person Vorname", type: "auto" },
-  { key: "{{person_nachname}}", label: "Person Nachname", type: "auto" },
-  { key: "{{firma_name}}", label: "Firma Name", type: "auto" },
-  { key: "{{firma_branche}}", label: "Firma Branche", type: "auto" },
-  { key: "{{ortschaft}}", label: "Ortschaft", type: "auto" },
+  { key: "{{person_vorname}}", label: "Person Vorname" },
+  { key: "{{person_nachname}}", label: "Person Nachname" },
+  { key: "{{firma_name}}", label: "Firma Name" },
+  { key: "{{firma_branche}}", label: "Firma Branche" },
+  { key: "{{ortschaft}}", label: "Ortschaft" },
 ];
 
-const MANUAL_PLACEHOLDERS = [
-  { key: "{{absender_vorname}}", label: "Absender Vorname", field: "absender_vorname" },
-  { key: "{{absender_name}}", label: "Absender Name", field: "absender_name" },
-  { key: "{{absender_telefon}}", label: "Absender Telefon", field: "absender_telefon" },
-  { key: "{{absender_email}}", label: "Absender E-Mail", field: "absender_email" },
-  { key: "{{weitere_eigene}}", label: "Weitere Eigene", field: "weitere_eigene" },
-];
+// Helper to extract all {{...}} placeholders from text
+function extractPlaceholders(text: string): string[] {
+  const regex = /\{\{([^}]+)\}\}/g;
+  const matches: string[] = [];
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    matches.push(match[1]);
+  }
+  return [...new Set(matches)];
+}
+
+// Helper to check if a placeholder is auto (from lead data)
+function isAutoPlaceholder(name: string): boolean {
+  return AUTO_PLACEHOLDERS.some(p => p.key === `{{${name}}}`);
+}
 
 export function EmailTemplateEditor() {
   const [open, setOpen] = useState(false);
@@ -69,24 +77,48 @@ export function EmailTemplateEditor() {
   const [isLoading, setIsLoading] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<EmailTemplate | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [showTemplateList, setShowTemplateList] = useState(true);
 
   // Form state
   const [templateName, setTemplateName] = useState("");
   const [templateSubject, setTemplateSubject] = useState("");
   const [templateBody, setTemplateBody] = useState("");
-  const [manualFields, setManualFields] = useState<ManualFields>({
-    absender_vorname: "",
-    absender_name: "",
-    absender_telefon: "",
-    absender_email: "",
-    weitere_eigene: "",
-  });
+  const [customPlaceholders, setCustomPlaceholders] = useState<CustomPlaceholder[]>([]);
+  const [newPlaceholderName, setNewPlaceholderName] = useState("");
+
+  // Refs for cursor position
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const subjectRef = useRef<HTMLInputElement>(null);
+  const [activeField, setActiveField] = useState<"subject" | "body">("body");
 
   useEffect(() => {
     if (open) {
       fetchTemplates();
     }
   }, [open]);
+
+  // Extract manual placeholders from subject and body
+  const usedManualPlaceholders = useMemo(() => {
+    const allText = `${templateSubject} ${templateBody}`;
+    const allPlaceholders = extractPlaceholders(allText);
+    return allPlaceholders.filter(p => !isAutoPlaceholder(p));
+  }, [templateSubject, templateBody]);
+
+  // Sync customPlaceholders with used manual placeholders
+  useEffect(() => {
+    setCustomPlaceholders(prev => {
+      const updated: CustomPlaceholder[] = [];
+      for (const name of usedManualPlaceholders) {
+        const existing = prev.find(p => p.name === name);
+        if (existing) {
+          updated.push(existing);
+        } else {
+          updated.push({ name, value: "" });
+        }
+      }
+      return updated;
+    });
+  }, [usedManualPlaceholders]);
 
   const fetchTemplates = async () => {
     setIsLoading(true);
@@ -102,10 +134,23 @@ export function EmailTemplateEditor() {
         variant: "destructive",
       });
     } else if (data) {
-      setTemplates(data.map(item => ({
-        ...item,
-        manual_fields: item.manual_fields as unknown as ManualFields
-      })));
+      setTemplates(data.map(item => {
+        // Handle legacy format migration
+        const rawFields = item.manual_fields as any;
+        let manualFields: ManualFields;
+        
+        if (rawFields && Array.isArray(rawFields.custom_placeholders)) {
+          manualFields = rawFields as ManualFields;
+        } else {
+          // Migrate from old format
+          manualFields = { custom_placeholders: [] };
+        }
+        
+        return {
+          ...item,
+          manual_fields: manualFields
+        };
+      }));
     }
     setIsLoading(false);
   };
@@ -114,13 +159,8 @@ export function EmailTemplateEditor() {
     setTemplateName("");
     setTemplateSubject("");
     setTemplateBody("");
-    setManualFields({
-      absender_vorname: "",
-      absender_name: "",
-      absender_telefon: "",
-      absender_email: "",
-      weitere_eigene: "",
-    });
+    setCustomPlaceholders([]);
+    setNewPlaceholderName("");
     setEditingTemplate(null);
   };
 
@@ -129,7 +169,7 @@ export function EmailTemplateEditor() {
     setTemplateName(template.name);
     setTemplateSubject(template.subject || "");
     setTemplateBody(template.body_template);
-    setManualFields(template.manual_fields);
+    setCustomPlaceholders(template.manual_fields.custom_placeholders || []);
   };
 
   const handleSave = async () => {
@@ -151,23 +191,13 @@ export function EmailTemplateEditor() {
       return;
     }
 
-    // Validate email if provided
-    if (manualFields.absender_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(manualFields.absender_email)) {
-      toast({
-        title: "Fehler",
-        description: "Bitte geben Sie eine gültige E-Mail-Adresse ein",
-        variant: "destructive",
-      });
-      return;
-    }
-
     setIsLoading(true);
 
     const templateData = {
       name: templateName.trim(),
       subject: templateSubject.trim() || null,
       body_template: templateBody,
-      manual_fields: JSON.parse(JSON.stringify(manualFields)),
+      manual_fields: JSON.parse(JSON.stringify({ custom_placeholders: customPlaceholders })),
     };
 
     if (editingTemplate) {
@@ -241,20 +271,57 @@ export function EmailTemplateEditor() {
   };
 
   const insertPlaceholder = (placeholder: string) => {
-    const textarea = document.getElementById("template-body") as HTMLTextAreaElement;
-    if (textarea) {
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
+    if (activeField === "subject" && subjectRef.current) {
+      const input = subjectRef.current;
+      const start = input.selectionStart || 0;
+      const end = input.selectionEnd || 0;
+      const newSubject = templateSubject.substring(0, start) + placeholder + templateSubject.substring(end);
+      setTemplateSubject(newSubject);
+      setTimeout(() => {
+        input.focus();
+        input.setSelectionRange(start + placeholder.length, start + placeholder.length);
+      }, 0);
+    } else if (bodyRef.current) {
+      const textarea = bodyRef.current;
+      const start = textarea.selectionStart || 0;
+      const end = textarea.selectionEnd || 0;
       const newBody = templateBody.substring(0, start) + placeholder + templateBody.substring(end);
       setTemplateBody(newBody);
-      // Set cursor position after placeholder
       setTimeout(() => {
         textarea.focus();
         textarea.setSelectionRange(start + placeholder.length, start + placeholder.length);
       }, 0);
-    } else {
-      setTemplateBody(templateBody + placeholder);
     }
+  };
+
+  const addCustomPlaceholder = () => {
+    const name = newPlaceholderName.trim().toLowerCase().replace(/\s+/g, "_");
+    if (!name) {
+      toast({
+        title: "Fehler",
+        description: "Bitte geben Sie einen Platzhalter-Namen ein",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (isAutoPlaceholder(name)) {
+      toast({
+        title: "Fehler",
+        description: "Dieser Name ist für automatische Platzhalter reserviert",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Insert the placeholder at cursor position
+    insertPlaceholder(`{{${name}}}`);
+    setNewPlaceholderName("");
+  };
+
+  const updatePlaceholderValue = (name: string, value: string) => {
+    setCustomPlaceholders(prev => 
+      prev.map(p => p.name === name ? { ...p, value } : p)
+    );
   };
 
   return (
@@ -266,238 +333,288 @@ export function EmailTemplateEditor() {
             E-Mail Vorlagen
           </Button>
         </DialogTrigger>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle>E-Mail Vorlagen Editor</DialogTitle>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b">
+            <DialogTitle className="text-xl">E-Mail Vorlagen Editor</DialogTitle>
             <DialogDescription>
-              Erstellen und verwalten Sie Ihre E-Mail-Vorlagen für den automatischen Outreach.
+              Erstellen und verwalten Sie Ihre E-Mail-Vorlagen mit automatischen und eigenen Platzhaltern.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex gap-4 flex-1 overflow-hidden">
-            {/* Templates List */}
-            <div className="w-64 flex flex-col border-r pr-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-medium text-sm">Vorlagen</h3>
+          <div className="flex flex-1 overflow-hidden">
+            {/* Collapsible Templates List */}
+            <div className={`flex flex-col border-r bg-muted/30 transition-all duration-300 ${showTemplateList ? 'w-56' : 'w-12'}`}>
+              <div className="flex items-center justify-between p-3 border-b">
+                {showTemplateList && (
+                  <span className="text-sm font-medium">Vorlagen</span>
+                )}
                 <Button
                   variant="ghost"
-                  size="sm"
-                  onClick={resetForm}
-                  className="h-8 gap-1"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => setShowTemplateList(!showTemplateList)}
                 >
-                  <Plus className="h-3 w-3" />
-                  Neu
+                  <ChevronRight className={`h-4 w-4 transition-transform ${showTemplateList ? 'rotate-180' : ''}`} />
                 </Button>
               </div>
-              <ScrollArea className="flex-1">
-                {isLoading && templates.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Lädt...</p>
-                ) : templates.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    Keine Vorlagen vorhanden
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {templates.map((template) => (
-                      <Card
-                        key={template.id}
-                        className={`cursor-pointer transition-colors ${
-                          editingTemplate?.id === template.id
-                            ? "border-primary bg-accent"
-                            : "hover:bg-accent/50"
-                        }`}
-                        onClick={() => handleEdit(template)}
-                      >
-                        <CardContent className="p-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium truncate flex-1">
-                              {template.name}
-                            </span>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6 shrink-0"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setDeleteConfirmId(template.id);
-                              }}
-                            >
-                              <Trash2 className="h-3 w-3 text-destructive" />
-                            </Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-              </ScrollArea>
+              
+              {showTemplateList ? (
+                <ScrollArea className="flex-1 p-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={resetForm}
+                    className="w-full mb-3 gap-1.5"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Neue Vorlage
+                  </Button>
+                  
+                  {isLoading && templates.length === 0 ? (
+                    <p className="text-xs text-muted-foreground text-center py-4">Lädt...</p>
+                  ) : templates.length === 0 ? (
+                    <p className="text-xs text-muted-foreground text-center py-4">
+                      Keine Vorlagen
+                    </p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {templates.map((template) => (
+                        <div
+                          key={template.id}
+                          className={`group flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer transition-colors text-sm ${
+                            editingTemplate?.id === template.id
+                              ? "bg-primary text-primary-foreground"
+                              : "hover:bg-accent"
+                          }`}
+                          onClick={() => handleEdit(template)}
+                        >
+                          <span className="truncate flex-1">{template.name}</span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={`h-5 w-5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity ${
+                              editingTemplate?.id === template.id ? 'hover:bg-primary-foreground/20' : ''
+                            }`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteConfirmId(template.id);
+                            }}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </ScrollArea>
+              ) : (
+                <div className="flex-1 flex flex-col items-center py-4">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={resetForm}
+                    className="mb-2"
+                    title="Neue Vorlage"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                  {templates.slice(0, 5).map((template) => (
+                    <Button
+                      key={template.id}
+                      variant={editingTemplate?.id === template.id ? "default" : "ghost"}
+                      size="icon"
+                      className="mb-1"
+                      onClick={() => handleEdit(template)}
+                      title={template.name}
+                    >
+                      <Mail className="h-4 w-4" />
+                    </Button>
+                  ))}
+                </div>
+              )}
             </div>
 
-            {/* Editor */}
+            {/* Main Editor Area */}
             <div className="flex-1 flex flex-col overflow-hidden">
-              <div className="grid gap-4 flex-1 overflow-auto pb-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="template-name">Vorlagenname *</Label>
-                  <Input
-                    id="template-name"
-                    value={templateName}
-                    onChange={(e) => setTemplateName(e.target.value)}
-                    placeholder="z.B. Erstkontakt Vorlage"
-                    maxLength={100}
-                  />
-                </div>
-
-                <div className="grid gap-2">
-                  <Label htmlFor="template-subject">Betreff</Label>
-                  <Input
-                    id="template-subject"
-                    value={templateSubject}
-                    onChange={(e) => setTemplateSubject(e.target.value)}
-                    placeholder="z.B. Anfrage bzgl. Zusammenarbeit"
-                    maxLength={200}
-                  />
-                </div>
-
-                {/* Placeholders */}
-                <div className="grid gap-2">
-                  <Label>Platzhalter (klicken zum Einfügen)</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {AUTO_PLACEHOLDERS.map((p) => (
-                      <Badge
-                        key={p.key}
-                        variant="secondary"
-                        className="cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors"
-                        onClick={() => insertPlaceholder(p.key)}
-                      >
-                        <GripVertical className="h-3 w-3 mr-1" />
-                        {p.label}
-                        <span className="ml-1 text-xs opacity-70">(Auto)</span>
-                      </Badge>
-                    ))}
-                    {MANUAL_PLACEHOLDERS.map((p) => (
-                      <Badge
-                        key={p.key}
-                        variant="outline"
-                        className="cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors"
-                        onClick={() => insertPlaceholder(p.key)}
-                      >
-                        <GripVertical className="h-3 w-3 mr-1" />
-                        {p.label}
-                        <span className="ml-1 text-xs opacity-70">(Manuell)</span>
-                      </Badge>
-                    ))}
+              <ScrollArea className="flex-1">
+                <div className="p-6 space-y-5">
+                  {/* Template Name */}
+                  <div className="space-y-2">
+                    <Label htmlFor="template-name" className="text-sm font-medium">
+                      Vorlagenname <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="template-name"
+                      value={templateName}
+                      onChange={(e) => setTemplateName(e.target.value)}
+                      placeholder="z.B. Erstkontakt Vorlage"
+                      maxLength={100}
+                      className="h-10"
+                    />
                   </div>
-                </div>
 
-                <div className="grid gap-2">
-                  <Label htmlFor="template-body">E-Mail Text *</Label>
-                  <Textarea
-                    id="template-body"
-                    value={templateBody}
-                    onChange={(e) => setTemplateBody(e.target.value)}
-                    placeholder={`Hallo {{person_vorname}},\n\nich bin {{absender_vorname}} {{absender_name}} von...\n\nLiebe Grüsse\n{{absender_vorname}} {{absender_name}}`}
-                    className="min-h-[200px] font-mono text-sm"
-                  />
-                </div>
+                  {/* Placeholders Section */}
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <Label className="text-sm font-medium">Platzhalter</Label>
+                      <span className="text-xs text-muted-foreground">Klicken zum Einfügen in {activeField === "subject" ? "Betreff" : "Text"}</span>
+                    </div>
+                    
+                    {/* Auto Placeholders */}
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="h-3.5 w-3.5 text-primary" />
+                        <span className="text-xs font-medium text-muted-foreground">Automatisch (von Lead-Daten)</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {AUTO_PLACEHOLDERS.map((p) => (
+                          <Badge
+                            key={p.key}
+                            variant="secondary"
+                            className="cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors text-xs px-2 py-1"
+                            onClick={() => insertPlaceholder(p.key)}
+                          >
+                            {p.label}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
 
-                <Separator />
-
-                {/* Manual Fields */}
-                <div className="grid gap-3">
-                  <Label className="font-medium">Manuelle Felder ausfüllen</Label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="grid gap-1.5">
-                      <Label htmlFor="absender_vorname" className="text-xs text-muted-foreground">
-                        Absender Vorname
-                      </Label>
-                      <Input
-                        id="absender_vorname"
-                        value={manualFields.absender_vorname}
-                        onChange={(e) =>
-                          setManualFields({ ...manualFields, absender_vorname: e.target.value })
-                        }
-                        placeholder="Max"
-                        maxLength={50}
-                      />
-                    </div>
-                    <div className="grid gap-1.5">
-                      <Label htmlFor="absender_name" className="text-xs text-muted-foreground">
-                        Absender Name
-                      </Label>
-                      <Input
-                        id="absender_name"
-                        value={manualFields.absender_name}
-                        onChange={(e) =>
-                          setManualFields({ ...manualFields, absender_name: e.target.value })
-                        }
-                        placeholder="Mustermann"
-                        maxLength={50}
-                      />
-                    </div>
-                    <div className="grid gap-1.5">
-                      <Label htmlFor="absender_telefon" className="text-xs text-muted-foreground">
-                        Absender Telefon
-                      </Label>
-                      <Input
-                        id="absender_telefon"
-                        value={manualFields.absender_telefon}
-                        onChange={(e) =>
-                          setManualFields({ ...manualFields, absender_telefon: e.target.value })
-                        }
-                        placeholder="+41 79 123 45 67"
-                        maxLength={30}
-                      />
-                    </div>
-                    <div className="grid gap-1.5">
-                      <Label htmlFor="absender_email" className="text-xs text-muted-foreground">
-                        Absender E-Mail
-                      </Label>
-                      <Input
-                        id="absender_email"
-                        type="email"
-                        value={manualFields.absender_email}
-                        onChange={(e) =>
-                          setManualFields({ ...manualFields, absender_email: e.target.value })
-                        }
-                        placeholder="max@beispiel.ch"
-                        maxLength={100}
-                      />
-                    </div>
-                    <div className="grid gap-1.5 col-span-2">
-                      <Label htmlFor="weitere_eigene" className="text-xs text-muted-foreground">
-                        Weitere Eigene
-                      </Label>
-                      <Input
-                        id="weitere_eigene"
-                        value={manualFields.weitere_eigene}
-                        onChange={(e) =>
-                          setManualFields({ ...manualFields, weitere_eigene: e.target.value })
-                        }
-                        placeholder="Zusätzliche Information..."
-                        maxLength={200}
-                      />
+                    {/* Custom Placeholders */}
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Hand className="h-3.5 w-3.5 text-orange-500" />
+                        <span className="text-xs font-medium text-muted-foreground">Eigene Platzhalter (manuell ausfüllen)</span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {usedManualPlaceholders.map((name) => (
+                          <Badge
+                            key={name}
+                            variant="outline"
+                            className="cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors text-xs px-2 py-1 border-orange-500/50"
+                            onClick={() => insertPlaceholder(`{{${name}}}`)}
+                          >
+                            {name}
+                          </Badge>
+                        ))}
+                        <div className="flex items-center gap-1.5">
+                          <Input
+                            value={newPlaceholderName}
+                            onChange={(e) => setNewPlaceholderName(e.target.value)}
+                            placeholder="neuer_platzhalter"
+                            className="h-7 w-36 text-xs"
+                            onKeyPress={(e) => e.key === 'Enter' && addCustomPlaceholder()}
+                          />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2"
+                            onClick={addCustomPlaceholder}
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
 
-              <div className="flex justify-end gap-2 pt-4 border-t">
-                {editingTemplate && (
-                  <Button variant="outline" onClick={resetForm}>
-                    <X className="h-4 w-4 mr-2" />
-                    Abbrechen
+                  <Separator />
+
+                  {/* Subject */}
+                  <div className="space-y-2">
+                    <Label htmlFor="template-subject" className="text-sm font-medium">Betreff</Label>
+                    <Input
+                      ref={subjectRef}
+                      id="template-subject"
+                      value={templateSubject}
+                      onChange={(e) => setTemplateSubject(e.target.value)}
+                      onFocus={() => setActiveField("subject")}
+                      placeholder="z.B. Anfrage bzgl. {{firma_name}}"
+                      maxLength={200}
+                      className="h-10 font-mono text-sm"
+                    />
+                  </div>
+
+                  {/* Body */}
+                  <div className="space-y-2">
+                    <Label htmlFor="template-body" className="text-sm font-medium">
+                      E-Mail Text <span className="text-destructive">*</span>
+                    </Label>
+                    <Textarea
+                      ref={bodyRef}
+                      id="template-body"
+                      value={templateBody}
+                      onChange={(e) => setTemplateBody(e.target.value)}
+                      onFocus={() => setActiveField("body")}
+                      placeholder={`Hallo {{person_vorname}},
+
+ich habe gesehen, dass {{firma_name}} in {{ortschaft}} tätig ist...
+
+Mit freundlichen Grüssen
+{{mein_name}}`}
+                      className="min-h-[280px] font-mono text-sm resize-y"
+                    />
+                  </div>
+
+                  {/* Manual Fields - Only show if there are manual placeholders used */}
+                  {usedManualPlaceholders.length > 0 && (
+                    <>
+                      <Separator />
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Hand className="h-4 w-4 text-orange-500" />
+                          <Label className="text-sm font-medium">Werte für eigene Platzhalter</Label>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          {customPlaceholders.map((placeholder) => (
+                            <div key={placeholder.name} className="space-y-1.5">
+                              <Label className="text-xs text-muted-foreground font-mono">
+                                {`{{${placeholder.name}}}`}
+                              </Label>
+                              <Input
+                                value={placeholder.value}
+                                onChange={(e) => updatePlaceholderValue(placeholder.name, e.target.value)}
+                                placeholder={`Wert für ${placeholder.name}`}
+                                className="h-9"
+                                maxLength={500}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </ScrollArea>
+
+              {/* Footer Actions */}
+              <div className="flex justify-between items-center gap-3 px-6 py-4 border-t bg-muted/30">
+                <div className="text-xs text-muted-foreground">
+                  {editingTemplate ? (
+                    <span>Bearbeite: <strong>{editingTemplate.name}</strong></span>
+                  ) : (
+                    <span>Neue Vorlage erstellen</span>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  {editingTemplate && (
+                    <Button variant="outline" onClick={resetForm} size="sm">
+                      <X className="h-4 w-4 mr-1.5" />
+                      Abbrechen
+                    </Button>
+                  )}
+                  <Button onClick={handleSave} disabled={isLoading} size="sm">
+                    <Save className="h-4 w-4 mr-1.5" />
+                    {editingTemplate ? "Aktualisieren" : "Speichern"}
                   </Button>
-                )}
-                <Button onClick={handleSave} disabled={isLoading}>
-                  <Save className="h-4 w-4 mr-2" />
-                  {editingTemplate ? "Aktualisieren" : "Speichern"}
-                </Button>
+                </div>
               </div>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
+      {/* Delete Confirmation */}
       <AlertDialog open={!!deleteConfirmId} onOpenChange={() => setDeleteConfirmId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
