@@ -14,7 +14,27 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      processing_status: {
+        Row: {
+          has_error: boolean
+          id: string
+          is_processing: boolean
+          updated_at: string
+        }
+        Insert: {
+          has_error?: boolean
+          id?: string
+          is_processing?: boolean
+          updated_at?: string
+        }
+        Update: {
+          has_error?: boolean
+          id?: string
+          is_processing?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
