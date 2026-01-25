@@ -1,14 +1,13 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Mail, Plus, Save, Trash2, X, ChevronRight, Sparkles, Hand } from "lucide-react";
+import { Mail, Plus, Save, Trash2, X, ChevronRight, Sparkles, Hand, FolderOpen, GripVertical } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -27,6 +26,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface CustomPlaceholder {
   name: string;
@@ -71,6 +76,71 @@ function isAutoPlaceholder(name: string): boolean {
   return AUTO_PLACEHOLDERS.some(p => p.key === `{{${name}}}`);
 }
 
+// Highlight placeholders in text for display
+function HighlightedText({ text }: { text: string }) {
+  const parts = text.split(/(\{\{[^}]+\}\})/g);
+  
+  return (
+    <div className="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed">
+      {parts.map((part, index) => {
+        const match = part.match(/^\{\{([^}]+)\}\}$/);
+        if (match) {
+          const name = match[1];
+          const isAuto = isAutoPlaceholder(name);
+          return (
+            <span
+              key={index}
+              className={`inline-block px-1.5 py-0.5 rounded text-xs font-semibold mx-0.5 ${
+                isAuto 
+                  ? "bg-placeholder-auto-bg text-placeholder-auto" 
+                  : "bg-placeholder-manual-bg text-placeholder-manual"
+              }`}
+            >
+              {part}
+            </span>
+          );
+        }
+        return <span key={index}>{part}</span>;
+      })}
+    </div>
+  );
+}
+
+// Draggable placeholder badge
+function DraggablePlaceholder({ 
+  placeholder, 
+  label, 
+  isAuto, 
+  onClick 
+}: { 
+  placeholder: string; 
+  label: string; 
+  isAuto: boolean;
+  onClick: () => void;
+}) {
+  const handleDragStart = (e: React.DragEvent) => {
+    e.dataTransfer.setData("text/plain", placeholder);
+    e.dataTransfer.effectAllowed = "copy";
+  };
+
+  return (
+    <Badge
+      variant={isAuto ? "secondary" : "outline"}
+      className={`cursor-grab active:cursor-grabbing select-none transition-all text-xs px-2 py-1 gap-1 ${
+        isAuto 
+          ? "hover:bg-placeholder-auto hover:text-primary-foreground border-placeholder-auto/30" 
+          : "hover:bg-placeholder-manual hover:text-primary-foreground border-placeholder-manual/50"
+      }`}
+      draggable
+      onDragStart={handleDragStart}
+      onClick={onClick}
+    >
+      <GripVertical className="h-3 w-3 opacity-50" />
+      {label}
+    </Badge>
+  );
+}
+
 export function EmailTemplateEditor() {
   const [open, setOpen] = useState(false);
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
@@ -90,6 +160,9 @@ export function EmailTemplateEditor() {
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const subjectRef = useRef<HTMLInputElement>(null);
   const [activeField, setActiveField] = useState<"subject" | "body">("body");
+
+  // Preview toggle
+  const [showPreview, setShowPreview] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -135,14 +208,12 @@ export function EmailTemplateEditor() {
       });
     } else if (data) {
       setTemplates(data.map(item => {
-        // Handle legacy format migration
         const rawFields = item.manual_fields as any;
         let manualFields: ManualFields;
         
         if (rawFields && Array.isArray(rawFields.custom_placeholders)) {
           manualFields = rawFields as ManualFields;
         } else {
-          // Migrate from old format
           manualFields = { custom_placeholders: [] };
         }
         
@@ -162,6 +233,7 @@ export function EmailTemplateEditor() {
     setCustomPlaceholders([]);
     setNewPlaceholderName("");
     setEditingTemplate(null);
+    setShowPreview(false);
   };
 
   const handleEdit = (template: EmailTemplate) => {
@@ -170,6 +242,7 @@ export function EmailTemplateEditor() {
     setTemplateSubject(template.subject || "");
     setTemplateBody(template.body_template);
     setCustomPlaceholders(template.manual_fields.custom_placeholders || []);
+    setShowPreview(false);
   };
 
   const handleSave = async () => {
@@ -270,7 +343,7 @@ export function EmailTemplateEditor() {
     setIsLoading(false);
   };
 
-  const insertPlaceholder = (placeholder: string) => {
+  const insertPlaceholder = useCallback((placeholder: string) => {
     if (activeField === "subject" && subjectRef.current) {
       const input = subjectRef.current;
       const start = input.selectionStart || 0;
@@ -292,6 +365,26 @@ export function EmailTemplateEditor() {
         textarea.setSelectionRange(start + placeholder.length, start + placeholder.length);
       }, 0);
     }
+  }, [activeField, templateSubject, templateBody]);
+
+  // Handle drop on textarea/input
+  const handleDrop = useCallback((e: React.DragEvent, field: "subject" | "body") => {
+    e.preventDefault();
+    const placeholder = e.dataTransfer.getData("text/plain");
+    if (!placeholder) return;
+
+    if (field === "subject") {
+      setTemplateSubject(prev => prev + placeholder);
+      subjectRef.current?.focus();
+    } else {
+      setTemplateBody(prev => prev + placeholder);
+      bodyRef.current?.focus();
+    }
+  }, []);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
   };
 
   const addCustomPlaceholder = () => {
@@ -313,7 +406,6 @@ export function EmailTemplateEditor() {
       return;
     }
     
-    // Insert the placeholder at cursor position
     insertPlaceholder(`{{${name}}}`);
     setNewPlaceholderName("");
   };
@@ -333,28 +425,28 @@ export function EmailTemplateEditor() {
             E-Mail Vorlagen
           </Button>
         </DialogTrigger>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0">
-          <DialogHeader className="px-6 pt-6 pb-4 border-b">
-            <DialogTitle className="text-xl">E-Mail Vorlagen Editor</DialogTitle>
-            <DialogDescription>
-              Erstellen und verwalten Sie Ihre E-Mail-Vorlagen mit automatischen und eigenen Platzhaltern.
+        <DialogContent className="max-w-6xl w-[95vw] max-h-[90vh] overflow-hidden flex flex-col p-0">
+          <DialogHeader className="px-4 md:px-6 pt-4 md:pt-6 pb-3 md:pb-4 border-b shrink-0">
+            <DialogTitle className="text-lg md:text-xl">E-Mail Vorlagen Editor</DialogTitle>
+            <DialogDescription className="text-xs md:text-sm">
+              Erstellen und verwalten Sie Ihre E-Mail-Vorlagen. Platzhalter per Klick oder Drag & Drop einfügen.
             </DialogDescription>
           </DialogHeader>
 
           <div className="flex flex-1 overflow-hidden">
             {/* Collapsible Templates List */}
-            <div className={`flex flex-col border-r bg-muted/30 transition-all duration-300 ${showTemplateList ? 'w-56' : 'w-12'}`}>
-              <div className="flex items-center justify-between p-3 border-b">
+            <div className={`flex flex-col border-r bg-muted/30 transition-all duration-300 shrink-0 ${showTemplateList ? 'w-48 md:w-56' : 'w-10 md:w-12'}`}>
+              <div className="flex items-center justify-between p-2 md:p-3 border-b">
                 {showTemplateList && (
-                  <span className="text-sm font-medium">Vorlagen</span>
+                  <span className="text-xs md:text-sm font-medium truncate">Vorlagen</span>
                 )}
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7"
+                  className="h-6 w-6 md:h-7 md:w-7 shrink-0"
                   onClick={() => setShowTemplateList(!showTemplateList)}
                 >
-                  <ChevronRight className={`h-4 w-4 transition-transform ${showTemplateList ? 'rotate-180' : ''}`} />
+                  <ChevronRight className={`h-3 w-3 md:h-4 md:w-4 transition-transform ${showTemplateList ? 'rotate-180' : ''}`} />
                 </Button>
               </div>
               
@@ -364,9 +456,9 @@ export function EmailTemplateEditor() {
                     variant="outline"
                     size="sm"
                     onClick={resetForm}
-                    className="w-full mb-3 gap-1.5"
+                    className="w-full mb-3 gap-1.5 text-xs"
                   >
-                    <Plus className="h-3.5 w-3.5" />
+                    <Plus className="h-3 w-3 md:h-3.5 md:w-3.5" />
                     Neue Vorlage
                   </Button>
                   
@@ -377,11 +469,11 @@ export function EmailTemplateEditor() {
                       Keine Vorlagen
                     </p>
                   ) : (
-                    <div className="space-y-1.5">
+                    <div className="space-y-1">
                       {templates.map((template) => (
                         <div
                           key={template.id}
-                          className={`group flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer transition-colors text-sm ${
+                          className={`group flex items-center gap-1.5 px-2 py-1.5 md:py-2 rounded-lg cursor-pointer transition-colors text-xs ${
                             editingTemplate?.id === template.id
                               ? "bg-primary text-primary-foreground"
                               : "hover:bg-accent"
@@ -408,74 +500,105 @@ export function EmailTemplateEditor() {
                   )}
                 </ScrollArea>
               ) : (
-                <div className="flex-1 flex flex-col items-center py-4">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={resetForm}
-                    className="mb-2"
-                    title="Neue Vorlage"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                  {templates.slice(0, 5).map((template) => (
-                    <Button
-                      key={template.id}
-                      variant={editingTemplate?.id === template.id ? "default" : "ghost"}
-                      size="icon"
-                      className="mb-1"
-                      onClick={() => handleEdit(template)}
-                      title={template.name}
-                    >
-                      <Mail className="h-4 w-4" />
-                    </Button>
+                <div className="flex-1 flex flex-col items-center py-3 gap-1">
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={resetForm}
+                          className="h-7 w-7 md:h-8 md:w-8"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="right">Neue Vorlage</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  {templates.slice(0, 6).map((template) => (
+                    <TooltipProvider key={template.id}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant={editingTemplate?.id === template.id ? "default" : "ghost"}
+                            size="icon"
+                            className="h-7 w-7 md:h-8 md:w-8"
+                            onClick={() => handleEdit(template)}
+                          >
+                            <Mail className="h-3.5 w-3.5 md:h-4 md:w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="right">{template.name}</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   ))}
                 </div>
               )}
             </div>
 
             {/* Main Editor Area */}
-            <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex-1 flex flex-col overflow-hidden min-w-0">
               <ScrollArea className="flex-1">
-                <div className="p-6 space-y-5">
-                  {/* Template Name */}
+                <div className="p-3 md:p-6 space-y-4 md:space-y-5">
+                  {/* Template Name with folder icon */}
                   <div className="space-y-2">
-                    <Label htmlFor="template-name" className="text-sm font-medium">
+                    <Label htmlFor="template-name" className="text-xs md:text-sm font-medium">
                       Vorlagenname <span className="text-destructive">*</span>
                     </Label>
-                    <Input
-                      id="template-name"
-                      value={templateName}
-                      onChange={(e) => setTemplateName(e.target.value)}
-                      placeholder="z.B. Erstkontakt Vorlage"
-                      maxLength={100}
-                      className="h-10"
-                    />
+                    <div className="flex gap-2">
+                      <Input
+                        id="template-name"
+                        value={templateName}
+                        onChange={(e) => setTemplateName(e.target.value)}
+                        placeholder="z.B. Erstkontakt Vorlage"
+                        maxLength={100}
+                        className="h-9 md:h-10 flex-1 text-sm"
+                      />
+                      {!showTemplateList && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-9 w-9 md:h-10 md:w-10 shrink-0"
+                                onClick={() => setShowTemplateList(true)}
+                              >
+                                <FolderOpen className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Vorlagen anzeigen</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                    </div>
                   </div>
 
                   {/* Placeholders Section */}
                   <div className="space-y-3">
-                    <div className="flex items-center gap-3">
-                      <Label className="text-sm font-medium">Platzhalter</Label>
-                      <span className="text-xs text-muted-foreground">Klicken zum Einfügen in {activeField === "subject" ? "Betreff" : "Text"}</span>
+                    <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-3">
+                      <Label className="text-xs md:text-sm font-medium">Platzhalter</Label>
+                      <span className="text-[10px] md:text-xs text-muted-foreground">
+                        Klicken oder ziehen zum Einfügen in {activeField === "subject" ? "Betreff" : "Text"}
+                      </span>
                     </div>
                     
                     {/* Auto Placeholders */}
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
-                        <Sparkles className="h-3.5 w-3.5 text-primary" />
-                        <span className="text-xs font-medium text-muted-foreground">Automatisch (von Lead-Daten)</span>
+                        <Sparkles className="h-3 w-3 md:h-3.5 md:w-3.5 text-placeholder-auto" />
+                        <span className="text-[10px] md:text-xs font-medium text-muted-foreground">Automatisch (von Lead-Daten)</span>
                       </div>
                       <div className="flex flex-wrap gap-1.5">
                         {AUTO_PLACEHOLDERS.map((p) => (
-                          <Badge
+                          <DraggablePlaceholder
                             key={p.key}
-                            variant="secondary"
-                            className="cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors text-xs px-2 py-1"
+                            placeholder={p.key}
+                            label={p.label}
+                            isAuto={true}
                             onClick={() => insertPlaceholder(p.key)}
-                          >
-                            {p.label}
-                          </Badge>
+                          />
                         ))}
                       </div>
                     </div>
@@ -483,26 +606,25 @@ export function EmailTemplateEditor() {
                     {/* Custom Placeholders */}
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
-                        <Hand className="h-3.5 w-3.5 text-orange-500" />
-                        <span className="text-xs font-medium text-muted-foreground">Eigene Platzhalter (manuell ausfüllen)</span>
+                        <Hand className="h-3 w-3 md:h-3.5 md:w-3.5 text-placeholder-manual" />
+                        <span className="text-[10px] md:text-xs font-medium text-muted-foreground">Eigene Platzhalter (manuell ausfüllen)</span>
                       </div>
                       <div className="flex flex-wrap items-center gap-1.5">
                         {usedManualPlaceholders.map((name) => (
-                          <Badge
+                          <DraggablePlaceholder
                             key={name}
-                            variant="outline"
-                            className="cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors text-xs px-2 py-1 border-orange-500/50"
+                            placeholder={`{{${name}}}`}
+                            label={name}
+                            isAuto={false}
                             onClick={() => insertPlaceholder(`{{${name}}}`)}
-                          >
-                            {name}
-                          </Badge>
+                          />
                         ))}
                         <div className="flex items-center gap-1.5">
                           <Input
                             value={newPlaceholderName}
                             onChange={(e) => setNewPlaceholderName(e.target.value)}
                             placeholder="neuer_platzhalter"
-                            className="h-7 w-36 text-xs"
+                            className="h-7 w-28 md:w-36 text-xs"
                             onKeyPress={(e) => e.key === 'Enter' && addCustomPlaceholder()}
                           />
                           <Button
@@ -511,7 +633,7 @@ export function EmailTemplateEditor() {
                             className="h-7 px-2"
                             onClick={addCustomPlaceholder}
                           >
-                            <Plus className="h-3.5 w-3.5" />
+                            <Plus className="h-3 w-3 md:h-3.5 md:w-3.5" />
                           </Button>
                         </div>
                       </div>
@@ -522,38 +644,64 @@ export function EmailTemplateEditor() {
 
                   {/* Subject */}
                   <div className="space-y-2">
-                    <Label htmlFor="template-subject" className="text-sm font-medium">Betreff</Label>
+                    <Label htmlFor="template-subject" className="text-xs md:text-sm font-medium">Betreff</Label>
                     <Input
                       ref={subjectRef}
                       id="template-subject"
                       value={templateSubject}
                       onChange={(e) => setTemplateSubject(e.target.value)}
                       onFocus={() => setActiveField("subject")}
+                      onDrop={(e) => handleDrop(e, "subject")}
+                      onDragOver={handleDragOver}
                       placeholder="z.B. Anfrage bzgl. {{firma_name}}"
                       maxLength={200}
-                      className="h-10 font-mono text-sm"
+                      className="h-9 md:h-10 font-mono text-xs md:text-sm"
                     />
+                    {templateSubject && (
+                      <div className="p-2 rounded-md bg-muted/50 border">
+                        <HighlightedText text={templateSubject} />
+                      </div>
+                    )}
                   </div>
 
-                  {/* Body */}
+                  {/* Body with preview toggle */}
                   <div className="space-y-2">
-                    <Label htmlFor="template-body" className="text-sm font-medium">
-                      E-Mail Text <span className="text-destructive">*</span>
-                    </Label>
-                    <Textarea
-                      ref={bodyRef}
-                      id="template-body"
-                      value={templateBody}
-                      onChange={(e) => setTemplateBody(e.target.value)}
-                      onFocus={() => setActiveField("body")}
-                      placeholder={`Hallo {{person_vorname}},
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="template-body" className="text-xs md:text-sm font-medium">
+                        E-Mail Text <span className="text-destructive">*</span>
+                      </Label>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => setShowPreview(!showPreview)}
+                      >
+                        {showPreview ? "Bearbeiten" : "Vorschau"}
+                      </Button>
+                    </div>
+                    
+                    {showPreview ? (
+                      <div className="min-h-[200px] md:min-h-[280px] p-3 md:p-4 rounded-md border bg-muted/30">
+                        <HighlightedText text={templateBody} />
+                      </div>
+                    ) : (
+                      <textarea
+                        ref={bodyRef}
+                        id="template-body"
+                        value={templateBody}
+                        onChange={(e) => setTemplateBody(e.target.value)}
+                        onFocus={() => setActiveField("body")}
+                        onDrop={(e) => handleDrop(e, "body")}
+                        onDragOver={handleDragOver}
+                        placeholder={`Hallo {{person_vorname}},
 
 ich habe gesehen, dass {{firma_name}} in {{ortschaft}} tätig ist...
 
 Mit freundlichen Grüssen
 {{mein_name}}`}
-                      className="min-h-[280px] font-mono text-sm resize-y"
-                    />
+                        className="w-full min-h-[200px] md:min-h-[280px] px-3 py-2 rounded-md border border-input bg-background font-mono text-xs md:text-sm resize-y focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                      />
+                    )}
                   </div>
 
                   {/* Manual Fields - Only show if there are manual placeholders used */}
@@ -562,20 +710,20 @@ Mit freundlichen Grüssen
                       <Separator />
                       <div className="space-y-3">
                         <div className="flex items-center gap-2">
-                          <Hand className="h-4 w-4 text-orange-500" />
-                          <Label className="text-sm font-medium">Werte für eigene Platzhalter</Label>
+                          <Hand className="h-3.5 w-3.5 md:h-4 md:w-4 text-placeholder-manual" />
+                          <Label className="text-xs md:text-sm font-medium">Werte für eigene Platzhalter</Label>
                         </div>
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           {customPlaceholders.map((placeholder) => (
                             <div key={placeholder.name} className="space-y-1.5">
-                              <Label className="text-xs text-muted-foreground font-mono">
+                              <Label className="text-[10px] md:text-xs text-muted-foreground font-mono">
                                 {`{{${placeholder.name}}}`}
                               </Label>
                               <Input
                                 value={placeholder.value}
                                 onChange={(e) => updatePlaceholderValue(placeholder.name, e.target.value)}
                                 placeholder={`Wert für ${placeholder.name}`}
-                                className="h-9"
+                                className="h-8 md:h-9 text-sm"
                                 maxLength={500}
                               />
                             </div>
@@ -588,23 +736,23 @@ Mit freundlichen Grüssen
               </ScrollArea>
 
               {/* Footer Actions */}
-              <div className="flex justify-between items-center gap-3 px-6 py-4 border-t bg-muted/30">
-                <div className="text-xs text-muted-foreground">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 md:gap-3 px-3 md:px-6 py-3 md:py-4 border-t bg-muted/30 shrink-0">
+                <div className="text-[10px] md:text-xs text-muted-foreground">
                   {editingTemplate ? (
                     <span>Bearbeite: <strong>{editingTemplate.name}</strong></span>
                   ) : (
                     <span>Neue Vorlage erstellen</span>
                   )}
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 w-full md:w-auto">
                   {editingTemplate && (
-                    <Button variant="outline" onClick={resetForm} size="sm">
-                      <X className="h-4 w-4 mr-1.5" />
+                    <Button variant="outline" onClick={resetForm} size="sm" className="flex-1 md:flex-none text-xs md:text-sm">
+                      <X className="h-3.5 w-3.5 md:h-4 md:w-4 mr-1 md:mr-1.5" />
                       Abbrechen
                     </Button>
                   )}
-                  <Button onClick={handleSave} disabled={isLoading} size="sm">
-                    <Save className="h-4 w-4 mr-1.5" />
+                  <Button onClick={handleSave} disabled={isLoading} size="sm" className="flex-1 md:flex-none text-xs md:text-sm">
+                    <Save className="h-3.5 w-3.5 md:h-4 md:w-4 mr-1 md:mr-1.5" />
                     {editingTemplate ? "Aktualisieren" : "Speichern"}
                   </Button>
                 </div>

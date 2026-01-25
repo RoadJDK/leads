@@ -53,6 +53,10 @@ All colors MUST be HSL.
     --sidebar-border: 220 13% 91%;
 
     --sidebar-ring: 217.2 91.2% 59.8%;
+    --placeholder-auto: 262 83% 58%;
+    --placeholder-auto-bg: 262 83% 95%;
+    --placeholder-manual: 30 90% 50%;
+    --placeholder-manual-bg: 30 90% 95%;
   }
 
   .dark {
@@ -91,6 +95,10 @@ All colors MUST be HSL.
     --sidebar-accent-foreground: 40 20% 96%;
     --sidebar-border: 240 3.7% 15.9%;
     --sidebar-ring: 262 80% 70%;
+    --placeholder-auto: 262 80% 70%;
+    --placeholder-auto-bg: 262 80% 20%;
+    --placeholder-manual: 30 90% 60%;
+    --placeholder-manual-bg: 30 90% 20%;
   }
 }
 
