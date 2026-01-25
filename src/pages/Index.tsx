@@ -2,10 +2,11 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { Dot, Settings } from "lucide-react";
+import { Dot, Settings, AlertTriangle, Loader2 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useTypewriter } from "@/hooks/useTypewriter";
 import { LeadFilters, LeadFiltersData, isFiltersValid } from "@/components/LeadFilters";
+import { useProcessingStatus } from "@/hooks/useProcessingStatus";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,6 +23,7 @@ const Index = () => {
   const [savedApiKey, setSavedApiKey] = useState<string | null>(null);
   const [previousApiKey, setPreviousApiKey] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const { isProcessing, hasError, isLoading: statusLoading, setProcessing, resetError } = useProcessingStatus();
   const [filters, setFilters] = useState<LeadFiltersData>({
     firmenKeywords: [],
     mitarbeiterVon: "",
@@ -100,9 +102,19 @@ const Index = () => {
   };
 
   const handleClick = async () => {
+    // If there's an error, reset it and return
+    if (hasError) {
+      await resetError();
+      toast.info("Fehler zurückgesetzt. Sie können es erneut versuchen.");
+      return;
+    }
+
     setIsLoading(true);
     
     try {
+      // Set processing status to true
+      await setProcessing(true);
+
       if (savedWebhookUrl && savedApiKey) {
         const response = await fetch(savedWebhookUrl, {
           method: 'POST',
@@ -136,13 +148,14 @@ const Index = () => {
         }
       }
       
-      toast.success("Erfolgreich!", {
-        description: "Sie erhalten Ihre Leads in Ihrer Notion-Seite und Google Sheets.",
+      toast.success("Anfrage gesendet!", {
+        description: "Der Workflow wird jetzt ausgeführt. Bitte warten Sie auf die Verarbeitung.",
         duration: 5000,
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut.";
       toast.error(errorMessage);
+      await setProcessing(false);
     } finally {
       setIsLoading(false);
     }
@@ -331,14 +344,26 @@ const Index = () => {
           
           <Button 
             onClick={handleClick}
-            disabled={isLoading || !isFiltersValid(filters)}
+            disabled={(isLoading || statusLoading || isProcessing || !isFiltersValid(filters)) && !hasError}
             size="lg"
-            className="text-lg px-12 py-6 h-auto rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105"
+            className={`text-lg px-12 py-6 h-auto rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 ${
+              hasError ? "bg-destructive hover:bg-destructive/90 text-destructive-foreground" : ""
+            }`}
           >
-            {isLoading ? (
+            {hasError ? (
               <>
-                <Dot className="mr-2 h-5 w-5 animate-pulse" />
+                <AlertTriangle className="mr-2 h-5 w-5" />
+                Workflow Fehler - Klicken zum Zurücksetzen
+              </>
+            ) : isLoading || statusLoading ? (
+              <>
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                 Lädt...
+              </>
+            ) : isProcessing ? (
+              <>
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                Verarbeitung läuft...
               </>
             ) : (
               "Leads erhalten"
