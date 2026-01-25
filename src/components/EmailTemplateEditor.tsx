@@ -76,32 +76,140 @@ function isAutoPlaceholder(name: string): boolean {
   return AUTO_PLACEHOLDERS.some(p => p.key === `{{${name}}}`);
 }
 
-// Highlight placeholders in text for display
-function HighlightedText({ text }: { text: string }) {
-  const parts = text.split(/(\{\{[^}]+\}\})/g);
-  
-  return (
-    <div className="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed">
-      {parts.map((part, index) => {
-        const match = part.match(/^\{\{([^}]+)\}\}$/);
-        if (match) {
-          const name = match[1];
-          const isAuto = isAutoPlaceholder(name);
-          return (
-            <span
-              key={index}
-              className={`inline-block px-1.5 py-0.5 rounded text-xs font-semibold mx-0.5 ${
-                isAuto 
-                  ? "bg-placeholder-auto-bg text-placeholder-auto" 
-                  : "bg-placeholder-manual-bg text-placeholder-manual"
-              }`}
-            >
-              {part}
-            </span>
-          );
+// Editable text component with live placeholder highlighting
+function EditableHighlightedText({ 
+  value, 
+  onChange, 
+  onFocus,
+  onDrop,
+  onDragOver,
+  placeholder,
+  className,
+  minHeight = "200px"
+}: { 
+  value: string; 
+  onChange: (value: string) => void;
+  onFocus?: () => void;
+  onDrop?: (e: React.DragEvent) => void;
+  onDragOver?: (e: React.DragEvent) => void;
+  placeholder?: string;
+  className?: string;
+  minHeight?: string;
+}) {
+  const editorRef = useRef<HTMLDivElement>(null);
+  const [isFocused, setIsFocused] = useState(false);
+  const lastValueRef = useRef(value);
+
+  // Update content when value changes externally (e.g., placeholder insertion)
+  useEffect(() => {
+    if (editorRef.current && value !== lastValueRef.current) {
+      // Only update if value changed from external source
+      const currentText = editorRef.current.innerText || "";
+      if (currentText !== value) {
+        // Save selection
+        const selection = window.getSelection();
+        const hadFocus = document.activeElement === editorRef.current;
+        
+        editorRef.current.innerText = value;
+        lastValueRef.current = value;
+        
+        // Restore focus and move cursor to end if we had focus
+        if (hadFocus && selection) {
+          editorRef.current.focus();
+          const range = document.createRange();
+          range.selectNodeContents(editorRef.current);
+          range.collapse(false);
+          selection.removeAllRanges();
+          selection.addRange(range);
         }
-        return <span key={index}>{part}</span>;
-      })}
+      }
+    }
+  }, [value]);
+
+  const handleInput = () => {
+    if (!editorRef.current) return;
+    const text = editorRef.current.innerText || "";
+    lastValueRef.current = text;
+    onChange(text);
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const text = e.clipboardData.getData("text/plain");
+    document.execCommand("insertText", false, text);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey && minHeight === "40px") {
+      // For single-line (subject), prevent enter
+      e.preventDefault();
+    }
+  };
+
+  const handleFocus = () => {
+    setIsFocused(true);
+    onFocus?.();
+  };
+
+  const handleBlur = () => {
+    setIsFocused(false);
+  };
+
+  // Render static highlighted preview (shown when not focused)
+  const renderHighlightedPreview = () => {
+    if (!value) {
+      return <span className="text-muted-foreground">{placeholder}</span>;
+    }
+
+    const parts = value.split(/(\{\{[^}]+\}\})/g);
+    return parts.map((part, index) => {
+      const match = part.match(/^\{\{([^}]+)\}\}$/);
+      if (match) {
+        const name = match[1];
+        const isAuto = isAutoPlaceholder(name);
+        return (
+          <span
+            key={index}
+            className={`inline-block px-1.5 py-0.5 rounded text-xs font-semibold mx-0.5 ${
+              isAuto 
+                ? "bg-placeholder-auto-bg text-placeholder-auto" 
+                : "bg-placeholder-manual-bg text-placeholder-manual"
+            }`}
+          >
+            {part}
+          </span>
+        );
+      }
+      return <span key={index}>{part}</span>;
+    });
+  };
+
+  return (
+    <div className="relative">
+      {/* Editable layer */}
+      <div
+        ref={editorRef}
+        contentEditable
+        suppressContentEditableWarning
+        onInput={handleInput}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+        onDrop={onDrop}
+        onDragOver={onDragOver}
+        onPaste={handlePaste}
+        onKeyDown={handleKeyDown}
+        className={`w-full px-3 py-2 rounded-md border border-input bg-background font-mono text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 overflow-auto whitespace-pre-wrap break-words ${isFocused ? '' : 'text-transparent caret-transparent'} ${className}`}
+        style={{ minHeight }}
+      />
+      {/* Highlighted overlay (shown when not focused) */}
+      {!isFocused && (
+        <div 
+          className="absolute inset-0 px-3 py-2 pointer-events-none font-mono text-xs md:text-sm whitespace-pre-wrap break-words overflow-auto"
+          style={{ minHeight }}
+        >
+          {renderHighlightedPreview()}
+        </div>
+      )}
     </div>
   );
 }
@@ -156,13 +264,8 @@ export function EmailTemplateEditor() {
   const [customPlaceholders, setCustomPlaceholders] = useState<CustomPlaceholder[]>([]);
   const [newPlaceholderName, setNewPlaceholderName] = useState("");
 
-  // Refs for cursor position
-  const bodyRef = useRef<HTMLTextAreaElement>(null);
-  const subjectRef = useRef<HTMLInputElement>(null);
+  // Track active field for placeholder insertion
   const [activeField, setActiveField] = useState<"subject" | "body">("body");
-
-  // Preview toggle
-  const [showPreview, setShowPreview] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -170,41 +273,10 @@ export function EmailTemplateEditor() {
     }
   }, [open]);
 
-  // Extract manual placeholders from subject and body text
-  const textPlaceholders = useMemo(() => {
-    const allText = `${templateSubject} ${templateBody}`;
-    const allPlaceholders = extractPlaceholders(allText);
-    return allPlaceholders.filter(p => !isAutoPlaceholder(p));
-  }, [templateSubject, templateBody]);
-
-  // Combine text placeholders with manually added ones
+  // Only use manually added placeholders (no auto-detection from text)
   const usedManualPlaceholders = useMemo(() => {
-    const fromText = new Set(textPlaceholders);
-    const fromCustom = customPlaceholders.map(p => p.name);
-    return [...new Set([...fromText, ...fromCustom])];
-  }, [textPlaceholders, customPlaceholders]);
-
-  // Sync customPlaceholders values with used placeholders (but don't remove manually added ones)
-  useEffect(() => {
-    setCustomPlaceholders(prev => {
-      const updated: CustomPlaceholder[] = [];
-      const existingNames = new Set(prev.map(p => p.name));
-      
-      // Keep all manually added placeholders
-      for (const placeholder of prev) {
-        updated.push(placeholder);
-      }
-      
-      // Add any new ones found in text that aren't already tracked
-      for (const name of textPlaceholders) {
-        if (!existingNames.has(name)) {
-          updated.push({ name, value: "" });
-        }
-      }
-      
-      return updated;
-    });
-  }, [textPlaceholders]);
+    return customPlaceholders.map(p => p.name);
+  }, [customPlaceholders]);
 
   const fetchTemplates = async () => {
     setIsLoading(true);
@@ -246,7 +318,6 @@ export function EmailTemplateEditor() {
     setCustomPlaceholders([]);
     setNewPlaceholderName("");
     setEditingTemplate(null);
-    setShowPreview(false);
   };
 
   const handleEdit = (template: EmailTemplate) => {
@@ -255,7 +326,6 @@ export function EmailTemplateEditor() {
     setTemplateSubject(template.subject || "");
     setTemplateBody(template.body_template);
     setCustomPlaceholders(template.manual_fields.custom_placeholders || []);
-    setShowPreview(false);
   };
 
   const handleSave = async () => {
@@ -356,81 +426,27 @@ export function EmailTemplateEditor() {
     setIsLoading(false);
   };
 
+  // Simple placeholder insertion - appends to active field
   const insertPlaceholder = useCallback((placeholder: string) => {
-    if (activeField === "subject" && subjectRef.current) {
-      const input = subjectRef.current;
-      const start = input.selectionStart || 0;
-      const end = input.selectionEnd || 0;
-      const newSubject = templateSubject.substring(0, start) + placeholder + templateSubject.substring(end);
-      setTemplateSubject(newSubject);
-      setTimeout(() => {
-        input.focus();
-        input.setSelectionRange(start + placeholder.length, start + placeholder.length);
-      }, 0);
-    } else if (bodyRef.current) {
-      const textarea = bodyRef.current;
-      const start = textarea.selectionStart || 0;
-      const end = textarea.selectionEnd || 0;
-      const newBody = templateBody.substring(0, start) + placeholder + templateBody.substring(end);
-      setTemplateBody(newBody);
-      setTimeout(() => {
-        textarea.focus();
-        textarea.setSelectionRange(start + placeholder.length, start + placeholder.length);
-      }, 0);
+    if (activeField === "subject") {
+      setTemplateSubject(prev => prev + placeholder);
+    } else {
+      setTemplateBody(prev => prev + placeholder);
     }
-  }, [activeField, templateSubject, templateBody]);
+  }, [activeField]);
 
-  // Handle drop on textarea/input - insert at drop position
+  // Handle drop on editable div - appends placeholder
   const handleDrop = useCallback((e: React.DragEvent, field: "subject" | "body") => {
     e.preventDefault();
     const placeholder = e.dataTransfer.getData("text/plain");
     if (!placeholder) return;
 
-    if (field === "subject" && subjectRef.current) {
-      const input = subjectRef.current;
-      // Get cursor position from drop event
-      const rect = input.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      
-      // Estimate character position (rough approximation)
-      const charWidth = 8; // approximate character width
-      const estimatedPos = Math.round(x / charWidth);
-      const pos = Math.min(Math.max(0, estimatedPos), templateSubject.length);
-      
-      const newSubject = templateSubject.substring(0, pos) + placeholder + templateSubject.substring(pos);
-      setTemplateSubject(newSubject);
-      setTimeout(() => {
-        input.focus();
-        input.setSelectionRange(pos + placeholder.length, pos + placeholder.length);
-      }, 0);
-    } else if (field === "body" && bodyRef.current) {
-      const textarea = bodyRef.current;
-      // Use document.caretPositionFromPoint or caretRangeFromPoint to get drop position
-      let dropPos = templateBody.length; // fallback to end
-      
-      // Try to get the position from the drop coordinates
-      if (document.caretRangeFromPoint) {
-        const range = document.caretRangeFromPoint(e.clientX, e.clientY);
-        if (range && textarea.contains(range.startContainer)) {
-          // For textarea, we need to calculate position differently
-          // Use the selection as approximation after focusing
-          textarea.focus();
-          dropPos = textarea.selectionStart || 0;
-        }
-      }
-      
-      // Alternative: set focus and use current selection
-      textarea.focus();
-      dropPos = textarea.selectionStart || dropPos;
-      
-      const newBody = templateBody.substring(0, dropPos) + placeholder + templateBody.substring(dropPos);
-      setTemplateBody(newBody);
-      setTimeout(() => {
-        textarea.focus();
-        textarea.setSelectionRange(dropPos + placeholder.length, dropPos + placeholder.length);
-      }, 0);
+    if (field === "subject") {
+      setTemplateSubject(prev => prev + placeholder);
+    } else {
+      setTemplateBody(prev => prev + placeholder);
     }
-  }, [templateSubject, templateBody]);
+  }, []);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -703,66 +719,40 @@ export function EmailTemplateEditor() {
 
                   <Separator />
 
-                  {/* Subject */}
+                  {/* Subject with live highlighting */}
                   <div className="space-y-2">
                     <Label htmlFor="template-subject" className="text-xs md:text-sm font-medium">Betreff</Label>
-                    <Input
-                      ref={subjectRef}
-                      id="template-subject"
+                    <EditableHighlightedText
                       value={templateSubject}
-                      onChange={(e) => setTemplateSubject(e.target.value)}
+                      onChange={setTemplateSubject}
                       onFocus={() => setActiveField("subject")}
                       onDrop={(e) => handleDrop(e, "subject")}
                       onDragOver={handleDragOver}
                       placeholder="z.B. Anfrage bzgl. {{firma_name}}"
-                      maxLength={200}
-                      className="h-9 md:h-10 font-mono text-xs md:text-sm"
+                      minHeight="40px"
+                      className="min-h-[40px]"
                     />
-                    {templateSubject && (
-                      <div className="p-2 rounded-md bg-muted/50 border">
-                        <HighlightedText text={templateSubject} />
-                      </div>
-                    )}
                   </div>
 
-                  {/* Body with preview toggle */}
+                  {/* Body with live highlighting */}
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="template-body" className="text-xs md:text-sm font-medium">
-                        E-Mail Text <span className="text-destructive">*</span>
-                      </Label>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 text-xs"
-                        onClick={() => setShowPreview(!showPreview)}
-                      >
-                        {showPreview ? "Bearbeiten" : "Vorschau"}
-                      </Button>
-                    </div>
-                    
-                    {showPreview ? (
-                      <div className="min-h-[200px] md:min-h-[280px] p-3 md:p-4 rounded-md border bg-muted/30">
-                        <HighlightedText text={templateBody} />
-                      </div>
-                    ) : (
-                      <textarea
-                        ref={bodyRef}
-                        id="template-body"
-                        value={templateBody}
-                        onChange={(e) => setTemplateBody(e.target.value)}
-                        onFocus={() => setActiveField("body")}
-                        onDrop={(e) => handleDrop(e, "body")}
-                        onDragOver={handleDragOver}
-                        placeholder={`Hallo {{person_vorname}},
+                    <Label htmlFor="template-body" className="text-xs md:text-sm font-medium">
+                      E-Mail Text <span className="text-destructive">*</span>
+                    </Label>
+                    <EditableHighlightedText
+                      value={templateBody}
+                      onChange={setTemplateBody}
+                      onFocus={() => setActiveField("body")}
+                      onDrop={(e) => handleDrop(e, "body")}
+                      onDragOver={handleDragOver}
+                      placeholder={`Hallo {{person_vorname}},
 
 ich habe gesehen, dass {{firma_name}} in {{ortschaft}} tätig ist...
 
 Mit freundlichen Grüssen
 {{mein_name}}`}
-                        className="w-full min-h-[200px] md:min-h-[280px] px-3 py-2 rounded-md border border-input bg-background font-mono text-xs md:text-sm resize-y focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                      />
-                    )}
+                      minHeight="280px"
+                    />
                   </div>
 
                   {/* Manual Fields - Only show if there are manual placeholders used */}
