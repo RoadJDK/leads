@@ -7,12 +7,17 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { useTypewriter } from "@/hooks/useTypewriter";
 import { LeadFilters, LeadFiltersData, isFiltersValid } from "@/components/LeadFilters";
 import { useProcessingStatus } from "@/hooks/useProcessingStatus";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+
+const TEST_WEBHOOK_URL = "https://kroenersim.app.n8n.cloud/webhook-test/kroener-consulting";
+const PROD_WEBHOOK_URL = "https://kroenersim.app.n8n.cloud/webhook/kroener-consulting";
 
 const Index = () => {
   const [name, setName] = useState("");
@@ -23,6 +28,10 @@ const Index = () => {
   const [savedApiKey, setSavedApiKey] = useState<string | null>(null);
   const [previousApiKey, setPreviousApiKey] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isTestMode, setIsTestMode] = useState(() => {
+    const stored = localStorage.getItem("isTestMode");
+    return stored === "true";
+  });
   const { isProcessing, hasError, isLoading: statusLoading, setProcessing, resetError } = useProcessingStatus();
   const [filters, setFilters] = useState<LeadFiltersData>({
     firmenKeywords: [],
@@ -33,6 +42,13 @@ const Index = () => {
     maxUmsatz: "",
     anzahlLeads: "",
   });
+
+  const handleTestModeToggle = (checked: boolean) => {
+    setIsTestMode(checked);
+    localStorage.setItem("isTestMode", String(checked));
+  };
+
+  const activeWebhookUrl = isTestMode ? TEST_WEBHOOK_URL : PROD_WEBHOOK_URL;
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -115,8 +131,8 @@ const Index = () => {
       // Set processing status to true
       await setProcessing(true);
 
-      if (savedWebhookUrl && savedApiKey) {
-        const response = await fetch(savedWebhookUrl, {
+      if (savedApiKey) {
+        const response = await fetch(activeWebhookUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -304,7 +320,17 @@ const Index = () => {
 
   return (
     <>
-      <div className="fixed top-4 right-4 z-50 flex gap-2">
+      <div className="fixed top-4 right-4 z-50 flex items-center gap-3">
+        <div className="flex items-center gap-2 bg-background/80 backdrop-blur-sm rounded-lg px-3 py-2 border">
+          <Switch
+            id="test-mode"
+            checked={isTestMode}
+            onCheckedChange={handleTestModeToggle}
+          />
+          <Label htmlFor="test-mode" className="text-sm font-medium cursor-pointer">
+            Am Testen
+          </Label>
+        </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -316,9 +342,6 @@ const Index = () => {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={handleResetWebhookUrl}>
-              Webhook ändern
-            </DropdownMenuItem>
             <DropdownMenuItem onClick={handleResetApiKey}>
               API-Schlüssel ändern
             </DropdownMenuItem>
