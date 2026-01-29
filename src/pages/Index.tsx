@@ -23,6 +23,8 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 
 const TEST_WEBHOOK_URL = "https://kroenersim.app.n8n.cloud/webhook-test/kroener-consulting";
@@ -41,8 +43,12 @@ const Index = () => {
     const stored = localStorage.getItem("isTestMode");
     return stored === "true";
   });
+  const [testEmail, setTestEmail] = useState(() => {
+    return localStorage.getItem("testEmail") || "";
+  });
   const [sendEmails, setSendEmails] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const { isProcessing, hasError, isLoading: statusLoading, setProcessing, resetError } = useProcessingStatus();
   const { templates, isLoading: templatesLoading } = useEmailTemplates();
   const [filters, setFilters] = useState<LeadFiltersData>({
@@ -59,6 +65,17 @@ const Index = () => {
     setIsTestMode(checked);
     localStorage.setItem("isTestMode", String(checked));
   };
+
+  const handleTestEmailChange = (email: string) => {
+    setTestEmail(email);
+    localStorage.setItem("testEmail", email);
+  };
+
+  const isValidEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
 
   const handleSendEmailsToggle = (checked: boolean) => {
     // Only allow enabling if a template is selected
@@ -161,29 +178,57 @@ const Index = () => {
       await setProcessing(true);
 
       if (savedApiKey) {
-        const response = await fetch(activeWebhookUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': savedApiKey,
-          },
-          body: JSON.stringify({
-            timestamp: new Date().toISOString(),
-            action: 'leads_erhalten',
-            name: savedName,
-            sendEmails: sendEmails,
-            emailTemplateId: sendEmails ? selectedTemplateId : null,
-            filters: {
-              firmenKeywords: filters.firmenKeywords,
-              mitarbeiterVon: filters.mitarbeiterVon,
-              mitarbeiterBis: filters.mitarbeiterBis === "" ? null : filters.mitarbeiterBis,
-              firmaOrtschaft: filters.firmaOrtschaft,
-              personTitel: filters.personTitel,
-              maxUmsatz: filters.maxUmsatz,
-              anzahlLeads: filters.anzahlLeads,
+        let response: Response;
+
+        if (uploadedFile) {
+          // Send as FormData with file
+          const formData = new FormData();
+          formData.append("file", uploadedFile);
+          formData.append("timestamp", new Date().toISOString());
+          formData.append("action", "leads_erhalten");
+          formData.append("name", savedName || "");
+          formData.append("sendEmails", String(sendEmails));
+          formData.append("emailTemplateId", sendEmails ? selectedTemplateId || "" : "");
+          formData.append("isTestMode", String(isTestMode));
+          formData.append("testEmail", isTestMode ? testEmail : "");
+          formData.append("hasUploadedFile", "true");
+
+          response = await fetch(activeWebhookUrl, {
+            method: 'POST',
+            headers: {
+              'x-api-key': savedApiKey,
             },
-          }),
-        });
+            body: formData,
+          });
+        } else {
+          // Send as JSON without file
+          response = await fetch(activeWebhookUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': savedApiKey,
+            },
+            body: JSON.stringify({
+              timestamp: new Date().toISOString(),
+              action: 'leads_erhalten',
+              name: savedName,
+              sendEmails: sendEmails,
+              emailTemplateId: sendEmails ? selectedTemplateId : null,
+              isTestMode: isTestMode,
+              testEmail: isTestMode ? testEmail : null,
+              hasUploadedFile: false,
+              filters: {
+                firmenKeywords: filters.firmenKeywords,
+                mitarbeiterVon: filters.mitarbeiterVon,
+                mitarbeiterBis: filters.mitarbeiterBis === "" ? null : filters.mitarbeiterBis,
+                firmaOrtschaft: filters.firmaOrtschaft,
+                personTitel: filters.personTitel,
+                maxUmsatz: filters.maxUmsatz,
+                anzahlLeads: filters.anzahlLeads,
+              },
+            }),
+          });
+        }
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
@@ -353,16 +398,11 @@ const Index = () => {
     <>
       <div className="fixed top-4 right-4 z-50 flex items-center gap-3">
         <EmailTemplateEditor />
-        <div className="flex items-center gap-2 bg-background/80 backdrop-blur-sm rounded-lg px-3 py-2 border">
-          <Switch
-            id="test-mode"
-            checked={isTestMode}
-            onCheckedChange={handleTestModeToggle}
-          />
-          <Label htmlFor="test-mode" className="text-sm font-medium cursor-pointer">
-            Am Testen
-          </Label>
-        </div>
+        {isTestMode && (
+          <div className="flex items-center gap-2 bg-yellow-500/10 border-yellow-500/50 backdrop-blur-sm rounded-lg px-3 py-2 border">
+            <span className="text-xs font-medium text-yellow-600 dark:text-yellow-400">Test-Modus</span>
+          </div>
+        )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -373,7 +413,40 @@ const Index = () => {
               <Settings className="h-5 w-5" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuLabel>Einstellungen</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <div className="px-2 py-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="test-mode-dropdown" className="text-sm cursor-pointer">
+                  Am Testen
+                </Label>
+                <Switch
+                  id="test-mode-dropdown"
+                  checked={isTestMode}
+                  onCheckedChange={handleTestModeToggle}
+                />
+              </div>
+            </div>
+            {isTestMode && (
+              <div className="px-2 py-2 border-t">
+                <Label htmlFor="test-email" className="text-xs text-muted-foreground mb-1.5 block">
+                  Test E-Mail Adresse
+                </Label>
+                <Input
+                  id="test-email"
+                  type="email"
+                  value={testEmail}
+                  onChange={(e) => handleTestEmailChange(e.target.value)}
+                  placeholder="test@example.com"
+                  className="h-8 text-sm"
+                />
+                {testEmail && !isValidEmail(testEmail) && (
+                  <p className="text-xs text-destructive mt-1">Ungültige E-Mail Adresse</p>
+                )}
+              </div>
+            )}
+            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleResetApiKey}>
               API-Schlüssel ändern
             </DropdownMenuItem>
@@ -395,7 +468,13 @@ const Index = () => {
             </p>
           </div>
 
-          <LeadFilters filters={filters} onChange={setFilters} />
+          <LeadFilters
+            filters={filters}
+            onChange={setFilters}
+            disabled={!!uploadedFile}
+            uploadedFile={uploadedFile}
+            onFileUpload={setUploadedFile}
+          />
 
           {/* Email Options */}
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-stretch sm:items-center">
@@ -438,9 +517,9 @@ const Index = () => {
             </div>
           </div>
           
-          <Button 
+          <Button
             onClick={handleClick}
-            disabled={(isLoading || statusLoading || isProcessing || !isFiltersValid(filters)) && !hasError}
+            disabled={(isLoading || statusLoading || isProcessing || (!uploadedFile && !isFiltersValid(filters)) || (isTestMode && !isValidEmail(testEmail))) && !hasError}
             size="lg"
             className={`text-lg px-12 py-6 h-auto rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 ${
               hasError ? "bg-destructive hover:bg-destructive/90 text-destructive-foreground" : ""

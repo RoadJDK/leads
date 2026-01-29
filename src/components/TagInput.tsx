@@ -6,9 +6,10 @@ interface TagInputProps {
   tags: string[];
   onChange: (tags: string[]) => void;
   placeholder?: string;
+  disabled?: boolean;
 }
 
-export const TagInput = ({ tags, onChange, placeholder }: TagInputProps) => {
+export const TagInput = ({ tags, onChange, placeholder, disabled = false }: TagInputProps) => {
   const [inputValue, setInputValue] = useState("");
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -53,6 +54,7 @@ export const TagInput = ({ tags, onChange, placeholder }: TagInputProps) => {
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
         className="text-base py-5 px-4 rounded-xl"
+        disabled={disabled}
       />
     </div>
   );
