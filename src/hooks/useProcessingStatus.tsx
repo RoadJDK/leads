@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
 interface ProcessingStatus {
@@ -13,25 +13,26 @@ export const useProcessingStatus = () => {
   const [statusId, setStatusId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Fetch status function (reusable)
+  const fetchStatus = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("processing_status")
+      .select("*")
+      .limit(1)
+      .maybeSingle();
+
+    if (data && !error) {
+      setIsProcessing(data.is_processing);
+      setHasError(data.has_error);
+      setStatusId(data.id);
+    }
+    setIsLoading(false);
+  }, []);
+
   // Fetch initial status
   useEffect(() => {
-    const fetchStatus = async () => {
-      const { data, error } = await supabase
-        .from("processing_status")
-        .select("*")
-        .limit(1)
-        .maybeSingle();
-
-      if (data && !error) {
-        setIsProcessing(data.is_processing);
-        setHasError(data.has_error);
-        setStatusId(data.id);
-      }
-      setIsLoading(false);
-    };
-
     fetchStatus();
-  }, []);
+  }, [fetchStatus]);
 
   // Subscribe to realtime changes
   useEffect(() => {
@@ -40,7 +41,7 @@ export const useProcessingStatus = () => {
       .on(
         "postgres_changes",
         {
-          event: "UPDATE",
+          event: "*",
           schema: "public",
           table: "processing_status",
         },
@@ -50,33 +51,54 @@ export const useProcessingStatus = () => {
           setHasError(newData.has_error);
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        // If subscription fails, poll every 5 seconds as fallback
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.warn("Realtime subscription failed, using polling fallback");
+        }
+      });
+
+    // Fallback polling every 5 seconds in case realtime doesn't work
+    const pollInterval = setInterval(() => {
+      fetchStatus();
+    }, 5000);
 
     return () => {
       supabase.removeChannel(channel);
+      clearInterval(pollInterval);
     };
-  }, []);
+  }, [fetchStatus]);
 
   const setProcessing = async (value: boolean) => {
     if (!statusId) return;
-    
-    await supabase
+
+    const { error } = await supabase
       .from("processing_status")
       .update({ is_processing: value, updated_at: new Date().toISOString() })
       .eq("id", statusId);
-    
-    setIsProcessing(value);
+
+    // Only update local state if the database update succeeded
+    if (!error) {
+      setIsProcessing(value);
+    }
   };
 
   const resetError = async () => {
     if (!statusId) return;
-    
-    await supabase
+
+    const { error } = await supabase
       .from("processing_status")
       .update({ has_error: false, updated_at: new Date().toISOString() })
       .eq("id", statusId);
-    
-    setHasError(false);
+
+    if (!error) {
+      setHasError(false);
+    }
+  };
+
+  // Manual refresh function
+  const refreshStatus = () => {
+    fetchStatus();
   };
 
   return {
@@ -85,5 +107,6 @@ export const useProcessingStatus = () => {
     isLoading,
     setProcessing,
     resetError,
+    refreshStatus,
   };
 };
