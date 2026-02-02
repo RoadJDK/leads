@@ -8,7 +8,9 @@ import { useTypewriter } from "@/hooks/useTypewriter";
 import { LeadFilters, LeadFiltersData, isFiltersValid } from "@/components/LeadFilters";
 import { useProcessingStatus } from "@/hooks/useProcessingStatus";
 import { useEmailTemplates } from "@/hooks/useEmailTemplates";
+import { useAnalytics } from "@/hooks/useAnalytics";
 import { EmailTemplateEditor } from "@/components/EmailTemplateEditor";
+import { AnalyticsDashboard } from "@/components/AnalyticsDashboard";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import {
@@ -51,6 +53,7 @@ const Index = () => {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const { isProcessing, hasError, isLoading: statusLoading, setProcessing, resetError } = useProcessingStatus();
   const { templates, isLoading: templatesLoading } = useEmailTemplates();
+  const { incrementLeadsUploaded } = useAnalytics();
   const [filters, setFilters] = useState<LeadFiltersData>({
     firmenKeywords: [],
     mitarbeiterVon: "",
@@ -238,8 +241,12 @@ const Index = () => {
           }
           throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
         }
+
+        // Increment leads count based on filter (or 1 for uploaded files)
+        const leadsCount = uploadedFile ? 1 : (parseInt(filters.anzahlLeads) || 1);
+        await incrementLeadsUploaded(leadsCount);
       }
-      
+
       toast.success("Anfrage gesendet!", {
         description: "Der Workflow wird jetzt ausgeführt. Bitte warten Sie auf die Verarbeitung.",
         duration: 5000,
@@ -467,6 +474,8 @@ const Index = () => {
               Deine hammer Leads warten auf dich 🔥
             </p>
           </div>
+
+          <AnalyticsDashboard />
 
           <LeadFilters
             filters={filters}
